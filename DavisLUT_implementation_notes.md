@@ -14,6 +14,44 @@ micro-reflections, shadowing and masking, so it stays accurate at large incidenc
 
 ---
 
+## Design decisions (answering the three original questions)
+
+These were the questions to settle before coding the rule; the answers drive everything below.
+
+**1. How the data is stored (LUT structure).** A custom JSON `.lut`. For each incidence-angle
+bin theta_i (default 40 bins over [0, 90 deg)) it stores integer counts
+(Launched / Reflected / Transmitted / Absorbed) and two flattened 2-D histograms
+(theta_out x phi_out, default 45 x 36; phi_out measured relative to the incidence plane), one
+for reflected and one for transmitted rays, plus metadata (n1, n2, wavelength, source heightmap,
+grid, pixel size). Integer counts keep it compact (~0.5 MB/LUT), make count-conservation exact,
+and let several scans be pooled by summing. A `FormatVersion` field leaves room for a wavelength
+axis later; for now it is single-wavelength (fixed n1/n2), as in the paper. The LUT is embedded in
+the config JSON so it reaches the `lsim` workers unchanged. (Details: `ALutSurfaceData` below.)
+
+**2. How random angles are generated (depends on 1).** At each surface hit: compute theta_i from
+photon.normal; pick the theta_i bin (stochastic interpolation between adjacent bin centers to
+avoid a staircase near the critical angle); draw a uniform to decide reflect/transmit from the
+stored per-bin R/T; then sample (theta_out, phi_out) from the matching 2-D histogram by
+inverse-CDF (CDFs precomputed once before the run, then read-only -> thread-safe). The outgoing
+direction is rebuilt in a frame tied to the incidence plane (specular azimuth at phi_rel = 0),
+signed so reflected -> back, transmitted -> forward. (Details: `ALutInterfaceRule` below.)
+
+**3. GUI and scripting.** New interface-rule type `DavisLUT` with a GUI editor (load LUT,
+R/T-vs-angle and outgoing-distribution plots, n1/n2-mismatch warning; auto-listed in the
+rule-type combo and the interface-rule tester), and a new `rules` script unit
+(`generateSurfaceLut`, `getLutInfo`, `setLutMaterialRule`, ...). (Details: `ainterfacewidgetfactory`
+and `AInterfaceRules_SI` below.)
+
+**Populating the LUT — "construct the data ourselves".** The LUTs are built by a self-contained
+offline heightmap ray tracer over the measured AFM height field Z(x,y) (local-normal Fresnel +
+Snell/TIR, multi-bounce, periodic tiling). This is essentially the paper's own method, so it
+**avoids the ROOT-upgrade / tessellated-volume path entirely** — no infrastructure change was
+needed for a working rule + generator + validation. The tessellated-volume route (updated ROOT +
+tessellated object shapes + navigator validation) remains a worthwhile future item, but it is not
+a prerequisite for this workflow.
+
+---
+
 ## New files
 
 ### `src/ants3/photonSim/interfaceRules/alutsurfacedata.{h,cpp}` — class `ALutSurfaceData`
@@ -267,6 +305,23 @@ Gaussian, not a measured-normal distribution) — it is two measured-surface mod
 mutual-consistency check. See `ants3bundle/script/LUT_test_results/`:
 `pooled_Rtheta_3way.png`, `pooled_DOI_old_vs_LUT.png`, and `*_discard.* / *_geom.*` for the
 alternative-handling artifacts.
+
+**The spike at theta_out = 90 deg in the reflected angular distribution.** When the stored
+reflected histogram is viewed for a given incidence bin (GUI "Show angular distribution"), there
+is a tall isolated spike at theta_out = 90 deg (grazing) that the transmitted histogram does not
+show. This is the direct fingerprint of the medium-based rule, not a tracer artifact: the ~10-15%
+of photons that reflect off a steep facet and fly *upward*, escaping without re-hitting the
+surface, are (correctly, per the paper) counted as reflected — but their outgoing direction is
+upward, which is geometrically inconsistent with a reflected ray, so the tally clamps their
+outgoing polar angle to 90 deg and they all land in the last theta_out bin. For the 28 um LUT at
+~46 deg incidence this is ~12.5% of reflected photons (vs only ~4% for the mirror case on the
+transmitted side, hence no comparable spike there). It is bounded and harmless to transport: it
+does not change the R/T split or the transmitted distribution, and at run time these become
+grazing reflections (v.N ~ 0), which is why the grazing reflectance stays high (~0.97, consistent
+with the paper's fig 7a). It is fundamentally the height-field limitation (no overhangs). If a
+cleaner reflected map is wanted, the up-flyers can be spread over the near-grazing theta_out bins
+instead of clamped to exactly 90 deg (cosmetic, negligible effect on transport); the tessellated
+route would remove the ambiguity entirely.
 
 ---
 

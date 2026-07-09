@@ -19,8 +19,9 @@ results/               the reference figures this bundle should reproduce
 ```
 
 The raw AFM scans (`LYSO-*.spm.txt`, ~428 MB total) are **not** included — too large for git.
-They live in `ants3bundle/script/LYSO-20260312-filtered/` and `.../LYSO-20260322-filtered/`
-and are only needed to regenerate the LUTs from scratch (Level B below).
+Download them here: https://utexas.box.com/s/3h6rj82d5831qjb9yrdo3rha2mqdwwh6
+(the `LYSO-20260312-filtered/` and `LYSO-20260322-filtered/` folders). They are only needed to
+regenerate the LUTs from scratch (Level B below); Level A does not need them.
 
 ## Prerequisites
 
@@ -44,7 +45,8 @@ dirs, or at your own output dirs).
 
 ## Level B — regenerate the LUTs from AFM data (full pipeline)
 
-For one location:
+First download the raw AFM scans from Box (link above) and unpack the
+`LYSO-2026*-filtered/` folders. Then, for one location:
 ```bash
 # 1. level the raw AFM scan (trace = column 1), 10x10 um scan, 512x512 points
 python3 prep_afm.py  <LYSO-...-loc1-filtered.spm.txt>  loc1_um.txt

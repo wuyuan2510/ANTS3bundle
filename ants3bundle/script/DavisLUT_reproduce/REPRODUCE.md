@@ -16,6 +16,8 @@ config/                config-28Yuan-airGaps-04-LUT.json  (crystal + dual-ended 
 old_reference/         old-microfacet SensorSignals per roughness/depth (for the comparison)
 example_heightmap/     one leveled 28um heightmap, as a generateSurfaceLut input example
 results/               the reference figures this bundle should reproduce
+validation/            rule validation: literal geometry experiment (source+interface+monitor)
+                         and rule-level MC check; see validation/VALIDATION.md
 ```
 
 The raw AFM scans (`LYSO-*.spm.txt`, ~428 MB total) are **not** included — too large for git.

@@ -1,8 +1,11 @@
 # Validating the DavisLUT rule
 
-The validation is a **literal geometry experiment**: fire collimated light at a LYSO->air
-interface at a known incidence angle, catch the reflected photons with a detector, and compare
-their measured angular distribution to what the LUT predicts.
+Two complementary checks that the runtime rule reproduces the LUT it samples from:
+1. a **literal geometry experiment** — fire collimated light at a LYSO->air interface at a known
+   incidence angle, catch the reflected photons with a detector, and compare their measured
+   polar-angle (θ_out) distribution to the LUT (validates the full tracer -> rule -> sensor chain);
+2. a **rule-level Monte-Carlo check** — sample the rule directly to verify the full 2D
+   (θ_out, φ_out) reflected distribution, which the flat geometry monitor cannot resolve.
 
 ## The experiment (`validate_geom.js`, run headless with `ants3 -j`)
 
@@ -45,21 +48,45 @@ reflected photons are nearly horizontal, travel a long lateral distance, and a f
 the block through its sides before reaching the finite monitor. That is a real
 detector-collection effect (grazing-reflected light skims along the surface), not a rule error.
 
-## Supplementary 2D angular view (`validation_heatmap.png`)
+## Rule-level Monte-Carlo check — the 2D (θ_out, φ_out) view (`validate_lut.cpp`)
 
-The monitor gives the θ_out marginal cleanly but not the joint (θ_out, φ_out) map. To also check
-the **full 2D** reflected distribution (including the azimuth and the θ_out = 90 deg ridge),
-`plot_lego.py` draws a 3D lego (log z): the **LUT prediction as a blue surface** and, overlaid,
-a **direct per-interaction sampling of the same rule** as a red wireframe (bundled in
-`data/valid_{10,45,80}.txt`). The wireframe tracks the surface everywhere, confirming the rule
-reproduces the stored 2D distribution. (This 2D cross-check uses direct sampling of the rule
-rather than the geometry monitor, which only records θ_out.)
+The geometry monitor gives the θ_out marginal cleanly but **not** the joint (θ_out, φ_out)
+distribution: a flat horizontal monitor records `acos(N·v)` with N vertical, i.e. only the polar
+angle θ_out — it integrates over the azimuth φ_out (and ANTS3 has no hemispherical monitor
+shape). To check the **full 2D** reflected distribution (azimuth included, and the θ_out = 90 deg
+ridge), this second check drives the **real runtime sampling** directly:
+
+`validate_lut.cpp` calls `ALutSurfaceData::selectThetaBin` + `sampleOutgoing` (exactly what
+`ALutInterfaceRule::calculate()` invokes) for 2e6 photons per angle, reconstructs each reflected
+photon's (θ_out, φ_out) with the same frame `calculate()` uses, and histograms them — a direct
+per-interaction Monte-Carlo, independent of any geometry/monitor. Build against the compiled
+object files, then run:
 ```bash
-python3 plot_lego.py           # figures/validation_heatmap.png
+cd <repo>/ants3bundle/src/ants3            # object files (*.o) live here after building ants3
+g++ -O2 -std=c++17 -I. -Itools -IphotonSim -IphotonSim/interfaceRules $(root-config --cflags) \
+    -I<Qt>/include -I<Qt>/include/QtCore \
+    <this>/validate_lut.cpp alutsurfacedata.o ajsontools.o aerrorhub.o \
+    -L<Qt>/lib -lQt6Core -o validate_lut
+./validate_lut <this>/../luts/pooled_28um_fwd.lut <this>/data   # writes data/valid_{10,45,80}.txt
 ```
+Then plot:
+```bash
+python3 plot_lego.py           # figures/validation_heatmap.png  (3D lego, LUT surface vs measured wireframe, log z)
+python3 plot_validation.py     # figures/validation_polar.png    (theta_out marginal, polar)
+```
+**Result.** Measured vs stored-LUT agree to Monte-Carlo noise (θ_out total-variation distance
+~0.002), reflectance R matches to ~0.001, and the θ_out = 90 deg bin fraction matches to three
+digits (0.124 / 0.125 / 0.149 for 10 / 45 / 80 deg) — confirming the rule reproduces the full 2D
+distribution, and that the 90 deg feature is a faithful, deterministic result of the
+medium-based escape handling (see the main notes). The bundled `data/valid_*.txt` let the two
+plotters regenerate the figures without rebuilding/rerunning.
+
+The two checks are complementary: the geometry experiment confirms the θ_out marginal through the
+full tracer -> rule -> sensor chain, and this MC check confirms the full 2D angular distribution
+against the LUT.
 
 ## Files
-- `validate_geom.js`, `plot_geom.py` — the geometry experiment and its θ_out plots (linear + polar)
-- `plot_lego.py` — the supplementary 2D angular lego overlay
+- `validate_geom.js`, `plot_geom.py` — geometry experiment and its θ_out plots (linear + polar)
+- `validate_lut.cpp`, `plot_lego.py`, `plot_validation.py` — rule-level MC check: 2D lego overlay + polar
 - `data/` — intermediate outputs, so the plotters regenerate the figures immediately
 - `figures/` — the reference figures

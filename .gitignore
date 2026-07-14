@@ -57,4 +57,10 @@ ants3bundle/build/
 
 *.stash
 
+# DavisLUT working artifacts (generated locally, not part of the committed feature;
+# the tracked reproducibility bundle lives under script/DavisLUT_reproduce/)
+ants3bundle/script/LUT_test_results/
+ants3bundle/script/config-28Yuan-airGaps-04-LUT.json
+ants3bundle/script/config-28Yuan-airGaps-04-pooledLUT.json
+ants3bundle/Output/*_LUTpaper/
 

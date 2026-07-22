@@ -19,7 +19,7 @@ public:
   ~AMonitor();
 
 //runtime functions
-  void fillForPhoton(double x, double y, double Time, double Angle, int waveIndex); // !!!***
+  void fillForPhoton(double x, double y, double Time, double Angle, double Phi, int waveIndex); // !!!***
 
   bool isForPhotons() const         {return config.PhotonOrParticle == 0;}
   bool isForParticles() const       {return config.PhotonOrParticle != 0;}
@@ -47,6 +47,7 @@ public:
   TH1D * time   = nullptr;
   TH2D * xy     = nullptr;
   TH1D * angle  = nullptr;
+  TH2D * anglePhi = nullptr; // theta relative to monitor face vs azimuth in monitor-local XY
   TH1D * wave   = nullptr;
   TH1D * energy = nullptr;
 
@@ -64,6 +65,7 @@ private:
   void initTimeHist();
   void initWaveHist();
   void initAngleHist();
+  void initAnglePhiHist();
   void initEnergyHist();
 
   void update1D(const QJsonObject &json, TH1D *&old);

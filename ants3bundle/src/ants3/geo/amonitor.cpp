@@ -13,9 +13,9 @@
 #include "TH2D.h"
 #include "TString.h"
 
-AMonitor::AMonitor() : name("Undefined"), time(0), xy(0), angle(0), wave(0), energy(0) {}
+AMonitor::AMonitor() : name("Undefined"), time(0), xy(0), angle(0), anglePhi(0), wave(0), energy(0) {}
 
-AMonitor::AMonitor(const AGeoObject *MonitorGeoObject) : time(0), xy(0), angle(0), wave(0), energy(0)
+AMonitor::AMonitor(const AGeoObject *MonitorGeoObject) : time(0), xy(0), angle(0), anglePhi(0), wave(0), energy(0)
 {
     readFromGeoObject(MonitorGeoObject);
 }
@@ -30,6 +30,7 @@ void AMonitor::clearData()
     delete time;   time   = nullptr;
     delete xy;     xy     = nullptr;
     delete angle;  angle  = nullptr;
+    delete anglePhi; anglePhi = nullptr;
     delete wave;   wave   = nullptr;
     delete energy; energy = nullptr;
 }
@@ -40,11 +41,12 @@ int AMonitor::getHits() const
     return time->GetEntries();
 }
 
-void AMonitor::fillForPhoton(double x, double y, double Time, double Angle, int waveIndex)
+void AMonitor::fillForPhoton(double x, double y, double Time, double Angle, double Phi, int waveIndex)
 {
     if (xy)    xy->Fill(x,y);
     if (time)  time->Fill(Time * timeFactor);
     if (angle) angle->Fill(Angle); // !!!*** check num bins == 1 then skip, put angle from cos calculation here
+    if (anglePhi) anglePhi->Fill(Angle, Phi);
     if (wave)  wave->Fill(waveIndex);
 }
 
@@ -64,7 +66,11 @@ bool AMonitor::readFromGeoObject(const AGeoObject *MonitorRecord)
     initXYHist();
     initTimeHist();
     initAngleHist();
-    if (config.PhotonOrParticle == 0) initWaveHist();
+    if (config.PhotonOrParticle == 0)
+    {
+        initAnglePhiHist();
+        initWaveHist();
+    }
     else initEnergyHist();
 
     return true;
@@ -83,6 +89,7 @@ void AMonitor::writeDataToJson(QJsonObject & json) const
     json["Wave"] = jstools::regularTh1dToJson(wave);
 
     json["Angle"] = jstools::regularTh1dToJson(angle);
+    json["AnglePhi"] = jstools::regularTh2dToJson(anglePhi);
 
     // Energy
     {
@@ -110,6 +117,7 @@ void AMonitor::readDataFromJson(const QJsonObject &json)
     jstools::parseJson(json, "Wave", wave);
 
     jstools::parseJson(json, "Angle", angle);
+    jstools::parseJson(json, "AnglePhi", anglePhi);
 
     // energy
     {
@@ -126,6 +134,7 @@ void AMonitor::append(const AMonitor & from)
 {
     appendTH1D(time,   from.time);
     appendTH1D(angle,  from.angle);
+    if (from.anglePhi) appendTH2D(anglePhi, from.anglePhi); // old monitor files have no AnglePhi
     appendTH1D(wave,   from.wave);
     appendTH1D(energy, from.energy);
 
@@ -169,6 +178,15 @@ void AMonitor::initAngleHist()
     delete angle;
     angle = new TH1D("", "", config.angleBins, config.angleFrom, config.angleTo);
     angle->SetXTitle("Angle, degrees");
+}
+
+void AMonitor::initAnglePhiHist()
+{
+    delete anglePhi;
+    anglePhi = new TH2D("", "", config.angleBins, config.angleFrom, config.angleTo,
+                                config.phiBins,   config.phiFrom,   config.phiTo);
+    anglePhi->SetXTitle("Theta, degrees");
+    anglePhi->SetYTitle("Phi in monitor local frame, degrees");
 }
 
 void AMonitor::initEnergyHist()

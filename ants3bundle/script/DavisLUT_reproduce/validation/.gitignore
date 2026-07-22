@@ -1,0 +1,8 @@
+# ANTS3/Python transient run products. Numerical reference data and figures remain versionable.
+# Local Chinese working document; the public documentation is VALIDATION_EN.md.
+VALIDATION.md
+Dispatcher-*/
+PhotonSimLog-*.log
+geom_out/
+geom_gui_out/
+__pycache__/

@@ -1,0 +1,134 @@
+{
+    "photonsPerRun": 300000,
+    "runs": [
+        {
+            "angle": 0,
+            "direction": "fwd",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 115455,
+            "transmitted": 184545
+        },
+        {
+            "angle": 10,
+            "direction": "fwd",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 123781,
+            "transmitted": 176219
+        },
+        {
+            "angle": 32,
+            "direction": "fwd",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 186131,
+            "transmitted": 113869
+        },
+        {
+            "angle": 33.3,
+            "direction": "fwd",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 190285,
+            "transmitted": 109715
+        },
+        {
+            "angle": 34,
+            "direction": "fwd",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 192835,
+            "transmitted": 107165
+        },
+        {
+            "angle": 45,
+            "direction": "fwd",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 231136,
+            "transmitted": 68864
+        },
+        {
+            "angle": 80,
+            "direction": "fwd",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 289783,
+            "transmitted": 10217
+        },
+        {
+            "angle": 89,
+            "direction": "fwd",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 294070,
+            "transmitted": 5930
+        },
+        {
+            "angle": 0,
+            "direction": "rev",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 22749,
+            "transmitted": 277251
+        },
+        {
+            "angle": 10,
+            "direction": "rev",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 23994,
+            "transmitted": 276006
+        },
+        {
+            "angle": 32,
+            "direction": "rev",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 30541,
+            "transmitted": 269459
+        },
+        {
+            "angle": 33.3,
+            "direction": "rev",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 30949,
+            "transmitted": 269051
+        },
+        {
+            "angle": 34,
+            "direction": "rev",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 31094,
+            "transmitted": 268906
+        },
+        {
+            "angle": 45,
+            "direction": "rev",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 36479,
+            "transmitted": 263521
+        },
+        {
+            "angle": 80,
+            "direction": "rev",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 59904,
+            "transmitted": 240096
+        },
+        {
+            "angle": 89,
+            "direction": "rev",
+            "launched": 300000,
+            "missing": 0,
+            "reflected": 62640,
+            "transmitted": 237360
+        }
+    ],
+    "wavelength": 420
+}

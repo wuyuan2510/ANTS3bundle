@@ -38,6 +38,10 @@ void AMonitorConfig::writeToJson(QJsonObject &json) const
    json["angleFrom"] = angleFrom;
    json["angleTo"] = angleTo;
 
+   json["phiBins"] = phiBins;
+   json["phiFrom"] = phiFrom;
+   json["phiTo"] = phiTo;
+
    json["waveBins"] = waveBins;
    json["waveFrom"] = waveFrom;
    json["waveTo"] = waveTo;
@@ -83,6 +87,10 @@ void AMonitorConfig::readFromJson(const QJsonObject & json)
     jstools::parseJson(json, "angleBins", angleBins);
     jstools::parseJson(json, "angleFrom", angleFrom);
     jstools::parseJson(json, "angleTo", angleTo);
+
+    jstools::parseJson(json, "phiBins", phiBins);
+    jstools::parseJson(json, "phiFrom", phiFrom);
+    jstools::parseJson(json, "phiTo", phiTo);
 
     jstools::parseJson(json, "waveBins", waveBins);
     jstools::parseJson(json, "waveFrom", waveFrom);

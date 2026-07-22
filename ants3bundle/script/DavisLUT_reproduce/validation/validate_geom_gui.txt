@@ -1,0 +1,350 @@
+// DavisLUT interactive geometry experiment -- run/visualization script.
+//
+// First load validate_geom_gui.json from the ANTS3 main window (Configuration -> Load).
+// Then open Scripting -> JavaScript, load this .txt file, edit the controls below, and run.
+
+// Leave empty when ANTS3 was started in this validation/ directory. Otherwise set the
+// absolute path of validation/ here so that the LUT and output paths resolve correctly.
+var VALIDATION_DIR = "";
+var DIRECTION = "fwd"; // "fwd" = LYSO -> air; "rev" = air -> LYSO
+var ANGLE = 45.0;       // incidence angle from the interface normal, degrees, [0, 90)
+var PHOTONS = 300000;
+var SEED = 20260714;
+
+var FWD = "../luts/pooled_28um_fwd.lut";
+var REV = "../luts/pooled_28um_rev.lut";
+var OUT = "geom_gui_out";
+var EXPECTED_CONFIG_NAME = "DavisLUT-GUI-validation";
+
+// Fail early with actionable messages when the script is started in the wrong context.
+if (typeof geowin == "undefined" || typeof graph == "undefined" ||
+    typeof hist == "undefined" || typeof grwin == "undefined")
+    core.abort("This script requires GUI mode: open it in the ANTS3 JavaScript window");
+if (VALIDATION_DIR != "") core.setCurrentDir(VALIDATION_DIR);
+if (config.getKeyValue("ConfigName") != EXPECTED_CONFIG_NAME)
+    core.abort("Load validate_geom_gui.json through Configuration -> Load before running this script");
+if (DIRECTION != "fwd" && DIRECTION != "rev")
+    core.abort("DIRECTION should be 'fwd' or 'rev'");
+if (ANGLE < 0 || ANGLE >= 90)
+    core.abort("ANGLE should be in [0, 90) degrees");
+if (PHOTONS <= 0)
+    core.abort("PHOTONS should be positive");
+if (!core.isFileExist(FWD) || !core.isFileExist(REV))
+    core.abort("Cannot find the LUT files from " + core.getCurrentDir() +
+               ". Start ANTS3 from validation/ or set VALIDATION_DIR at the top of this script");
+if (lsim.countMonitors() != 2)
+    core.abort("The loaded configuration should contain exactly two photon monitors");
+
+var reverse = DIRECTION == "rev";
+var lutFile = reverse ? REV : FWD;
+var lut = core.loadObject(lutFile);
+
+// Change only run-dependent settings. Geometry, materials, monitors, and both interface rules
+// are already stored in validate_geom_gui.json.
+core.createDir(OUT);
+core.createDir(OUT + "/sim");
+config.replace("PhotonSim.PhotonBombs.PhotonsPerBomb.FixedNumber", PHOTONS);
+config.replace("PhotonSim.Run.OutputDirectory", OUT + "/sim");
+config.replace("PhotonSim.Run.SaveMonitors", true);
+
+var rad = ANGLE*Math.PI/180.0;
+var depth = 0.002; // mm; source is placed between the interface and the incident-side monitor
+var zSource = reverse ? depth : -depth;
+var dz = reverse ? -Math.cos(rad) : Math.cos(rad);
+var source = [-depth*Math.tan(rad), 0, zSource];
+config.replace("PhotonSim.PhotonBombs.Single.Position", source);
+config.replace("PhotonSim.PhGenOverrides.Direction.DirectionVector", [Math.sin(rad), 0, dz]);
+config.updateConfig();
+
+// Show the setup before running. These three colored lines are explanatory guides, not saved
+// Monte-Carlo photon tracks: red is incident; blue/green are added after the run at mean angles.
+geowin.clearTracks();
+geowin.redraw();
+var displayLength = 4.0;
+var displaySource = [-displayLength*Math.sin(rad), 0,
+                     reverse ? displayLength*Math.cos(rad) : -displayLength*Math.cos(rad)];
+geowin.addTrack([displaySource, [0, 0, 0]], 2, 1, 3); // red: incident pencil beam
+geowin.showTracksAndMarkers();
+geowin.showWindow(false);
+
+// Run the real geometry -> tracer -> DavisLUT rule -> monitor chain.
+lsim.setSeed(SEED);
+lsim.simulate();
+lsim.loadMonitorData(OUT + "/sim/PhotonMonitors.txt");
+
+// Monitor 0 is below the interface and monitor 1 is above it. Their physical roles swap when
+// the launch direction is reversed.
+var reflectedIndex = reverse ? 1 : 0;
+var transmittedIndex = reverse ? 0 : 1;
+var measuredR = normalizeMonitor(lsim.getMonitorAngle(reflectedIndex));
+var measuredT = normalizeMonitor(lsim.getMonitorAngle(transmittedIndex));
+var hits = lsim.getMonitorHitsAll();
+var measuredRp = hits[reflectedIndex]/PHOTONS;
+var measuredTp = hits[transmittedIndex]/PHOTONS;
+var measuredAp = Math.max(0, 1.0-measuredRp-measuredTp);
+var expectedRp = expectedProbability(lut, ANGLE, true);
+var expectedTp = expectedProbability(lut, ANGLE, false);
+var expectedAp = Math.max(0, 1.0-expectedRp-expectedTp);
+var expectedR = lutMarginal(lut, ANGLE, true);
+var expectedT = lutMarginal(lut, ANGLE, false);
+var nTheta = lut.Binning.ThetaOutBins;
+var nPhi = lut.Binning.PhiOutBins;
+var measuredRJoint = monitorJoint(lsim.getMonitorAnglePhi(reflectedIndex), nTheta, nPhi, reverse);
+var measuredTJoint = monitorJoint(lsim.getMonitorAnglePhi(transmittedIndex), nTheta, nPhi, reverse);
+var expectedRJoint = lutJoint(lut, ANGLE, true);
+var expectedTJoint = lutJoint(lut, ANGLE, false);
+var jointApplicable = Math.abs(Math.sin(rad)) >= 1.0e-6;
+var rJointTvd = jointApplicable ? totalVariation(measuredRJoint, expectedRJoint) : 0;
+var tJointTvd = jointApplicable ? totalVariation(measuredTJoint, expectedTJoint) : 0;
+var rJointLimit = jointApplicable ? noiseTvdLimit(expectedRJoint, hits[reflectedIndex]) : 0;
+var tJointLimit = jointApplicable ? noiseTvdLimit(expectedTJoint, hits[transmittedIndex]) : 0;
+
+// Add representative rays at the measured conditional mean outgoing angles.
+var meanR = meanAngle(measuredR);
+var meanT = meanAngle(measuredT);
+var reflectedSign = reverse ? 1.0 : -1.0;
+var transmittedSign = -reflectedSign;
+geowin.addTrack([[0,0,0], [displayLength*Math.sin(meanR*Math.PI/180.0), 0,
+                            reflectedSign*displayLength*Math.cos(meanR*Math.PI/180.0)]], 4, 1, 3);
+geowin.addTrack([[0,0,0], [displayLength*Math.sin(meanT*Math.PI/180.0), 0,
+                            transmittedSign*displayLength*Math.cos(meanT*Math.PI/180.0)]], 3, 1, 3);
+geowin.showTracksAndMarkers();
+
+// Overlay the conditional theta_out densities measured by the monitors with those derived
+// independently from the serialized LUT histogram.
+var names = ["DavisLUT_expected_reflected", "Geometry_measured_reflected",
+             "DavisLUT_expected_transmitted", "Geometry_measured_transmitted"];
+for (var i = 0; i < names.length; i++) graph.remove(names[i]);
+
+graph.new1D(names[0]); graph.addPoints(names[0], expectedR);
+graph.new1D(names[1]); graph.addPoints(names[1], measuredR);
+graph.new1D(names[2]); graph.addPoints(names[2], expectedT);
+graph.new1D(names[3]); graph.addPoints(names[3], measuredT);
+
+graph.setTitle(names[0], "LUT reflected");
+graph.setTitle(names[1], "monitor reflected");
+graph.setTitle(names[2], "LUT transmitted");
+graph.setTitle(names[3], "monitor transmitted");
+for (var i = 0; i < names.length; i++)
+    graph.setAxisTitles(names[i], "theta_out from global interface normal, deg",
+                       "conditional probability density, 1/deg");
+graph.setLineProperties(names[0], 4, 1, 3);
+graph.setMarkerProperties(names[1], 4, 20, 0.8);
+graph.setLineProperties(names[2], 3, 1, 3);
+graph.setMarkerProperties(names[3], 3, 21, 0.8);
+graph.setMinimum(names[0], 0);
+
+graph.draw(names[0], "AL");
+graph.draw(names[1], "Psame");
+graph.draw(names[2], "Lsame");
+graph.draw(names[3], "Psame");
+grwin.addLegend(0.58, 0.67, 0.92, 0.90,
+                DIRECTION + ", incidence " + ANGLE + " deg");
+grwin.addToBasket("DavisLUT geometry validation " + DIRECTION + " " + ANGLE + " deg");
+grwin.showWindow();
+
+// Display and save the full conditional (theta_out, phi_out) distributions.  The monitor records
+// phi in its local XY frame.  For rev, DavisLUT's ey=N x ex points toward global -Y, so
+// monitorJoint() mirrors phi to bring the measured histogram into the LUT convention.
+var jointTag = DIRECTION + "_" + ("" + ANGLE).replace(".", "p");
+var jointNames = ["LUT_joint_reflected", "Monitor_joint_reflected",
+                  "LUT_joint_transmitted", "Monitor_joint_transmitted"];
+for (var i = 0; i < jointNames.length; i++) hist.remove(jointNames[i]);
+makeJointHistogram(jointNames[0], expectedRJoint, nTheta, nPhi,
+                   "LUT expected reflected;" + DIRECTION + ", " + ANGLE + " deg");
+makeJointHistogram(jointNames[1], measuredRJoint, nTheta, nPhi,
+                   "Monitor measured reflected;" + DIRECTION + ", " + ANGLE + " deg");
+makeJointHistogram(jointNames[2], expectedTJoint, nTheta, nPhi,
+                   "LUT expected transmitted;" + DIRECTION + ", " + ANGLE + " deg");
+makeJointHistogram(jointNames[3], measuredTJoint, nTheta, nPhi,
+                   "Monitor measured transmitted;" + DIRECTION + ", " + ANGLE + " deg");
+matchJointScales(jointNames[0], jointNames[1], expectedRJoint, measuredRJoint);
+matchJointScales(jointNames[2], jointNames[3], expectedTJoint, measuredTJoint);
+showAndSaveJoint(jointNames[0], "LUT joint reflected " + jointTag,
+                 OUT + "/joint_" + jointTag + "_reflected_expected.png");
+showAndSaveJoint(jointNames[1], "Monitor joint reflected " + jointTag,
+                 OUT + "/joint_" + jointTag + "_reflected_measured.png");
+showAndSaveJoint(jointNames[2], "LUT joint transmitted " + jointTag,
+                 OUT + "/joint_" + jointTag + "_transmitted_expected.png");
+showAndSaveJoint(jointNames[3], "Monitor joint transmitted " + jointTag,
+                 OUT + "/joint_" + jointTag + "_transmitted_measured.png");
+grwin.showWindow();
+
+core.print("Geometry GUI validation", DIRECTION, "angle", ANGLE,
+           "R measured/expected", measuredRp, expectedRp,
+           "T measured/expected", measuredTp, expectedTp,
+           "A-or-uncollected measured/expected", measuredAp, expectedAp);
+if (jointApplicable)
+    core.print("Joint theta/phi TVD R", rJointTvd, "limit", rJointLimit,
+               rJointTvd <= rJointLimit ? "PASS" : "FAIL",
+               "T", tJointTvd, "limit", tJointLimit,
+               tJointTvd <= tJointLimit ? "PASS" : "FAIL");
+else
+    core.print("Joint theta/phi TVD: N/A at normal incidence because the incidence plane is undefined");
+core.print("Geometry window: red=incoming, blue=mean reflected, green=mean transmitted");
+
+// Convert monitor bin counts into a unit-normalized conditional density in 1/degree.
+function normalizeMonitor(data)
+{
+    var total = 0;
+    for (var i = 0; i < data.length; i++) total += data[i][1];
+    var binWidth = data.length > 1 ? data[1][0]-data[0][0] : 1.0;
+    var result = [];
+    for (var i = 0; i < data.length; i++)
+        result.push([data[i][0], total > 0 ? data[i][1]/total/binWidth : 0]);
+    return result;
+}
+
+function meanAngle(distribution)
+{
+    var sum = 0, norm = 0;
+    for (var i = 0; i < distribution.length; i++)
+    {
+        sum += distribution[i][0]*distribution[i][1];
+        norm += distribution[i][1];
+    }
+    return norm > 0 ? sum/norm : 0;
+}
+
+// Match ALutSurfaceData's interpolation convention: incidence-bin centers are at
+// (k+0.5)*90/N degrees, with clamping at the two ends.
+function incidenceMix(data, angle)
+{
+    var n = data.Binning.ThetaIncBins;
+    var width = 90.0/n;
+    var x = angle/width-0.5;
+    var k0 = Math.floor(x), f = x-k0;
+    if (k0 < 0) { k0 = 0; f = 0; }
+    if (k0 >= n-1) { k0 = n-1; f = 0; }
+    return {k0:k0, k1:f > 0 ? k0+1 : k0, f:f};
+}
+
+function expectedProbability(data, angle, reflected)
+{
+    var mix = incidenceMix(data, angle);
+    var counts = reflected ? data.ReflectedCounts : data.TransmittedCounts;
+    var p0 = counts[mix.k0]/data.Launched[mix.k0];
+    var p1 = counts[mix.k1]/data.Launched[mix.k1];
+    return (1.0-mix.f)*p0 + mix.f*p1;
+}
+
+// Sum the 2D (theta_out, phi_out) LUT over phi and condition on the selected R/T branch.
+function lutMarginal(data, angle, reflected)
+{
+    var mix = incidenceMix(data, angle);
+    var nTheta = data.Binning.ThetaOutBins;
+    var nPhi = data.Binning.PhiOutBins;
+    var hist = reflected ? data.ReflectedHist : data.TransmittedHist;
+    var probability = expectedProbability(data, angle, reflected);
+    var result = [];
+    var thetaWidth = 90.0/nTheta;
+    for (var it = 0; it < nTheta; it++)
+    {
+        var unconditional = 0;
+        for (var ip = 0; ip < nPhi; ip++)
+        {
+            var j = it*nPhi+ip;
+            unconditional += (1.0-mix.f)*hist[mix.k0][j]/data.Launched[mix.k0];
+            if (mix.k1 != mix.k0)
+                unconditional += mix.f*hist[mix.k1][j]/data.Launched[mix.k1];
+        }
+        result.push([(it+0.5)*thetaWidth,
+                     probability > 0 ? unconditional/probability/thetaWidth : 0]);
+    }
+    return result;
+}
+
+// Return the LUT's conditional joint probability per (theta,phi) cell.  Interpolation is done
+// before conditioning on reflection/transmission, just as in ALutSurfaceData.
+function lutJoint(data, angle, reflected)
+{
+    var mix = incidenceMix(data, angle);
+    var nTheta = data.Binning.ThetaOutBins;
+    var nPhi = data.Binning.PhiOutBins;
+    var histogram = reflected ? data.ReflectedHist : data.TransmittedHist;
+    var probability = expectedProbability(data, angle, reflected);
+    var result = [];
+    for (var j = 0; j < nTheta*nPhi; j++)
+    {
+        var unconditional = (1.0-mix.f)*histogram[mix.k0][j]/data.Launched[mix.k0];
+        if (mix.k1 != mix.k0)
+            unconditional += mix.f*histogram[mix.k1][j]/data.Launched[mix.k1];
+        result.push(probability > 0 ? unconditional/probability : 0);
+    }
+    return result;
+}
+
+// Convert monitor [thetaCenter, phiCenter, count] triples to the LUT's flattened bin order.
+// The two histograms intentionally use identical 45 x 36 binning in validate_geom_gui.json.
+function monitorJoint(data, nTheta, nPhi, mirrorPhi)
+{
+    if (data.length != nTheta*nPhi)
+        core.abort("Monitor theta/phi binning does not match the LUT: expected " +
+                   nTheta + " x " + nPhi + " cells, got " + data.length);
+    var result = [];
+    for (var j = 0; j < nTheta*nPhi; j++) result.push(0);
+    var total = 0;
+    for (var it = 0; it < nTheta; it++)
+        for (var ip = 0; ip < nPhi; ip++)
+        {
+            var source = it*nPhi + ip;
+            var targetPhi = mirrorPhi ? nPhi-1-ip : ip;
+            var count = data[source][2];
+            result[it*nPhi + targetPhi] += count;
+            total += count;
+        }
+    if (total > 0)
+        for (var j = 0; j < result.length; j++) result[j] /= total;
+    return result;
+}
+
+function totalVariation(measured, expected)
+{
+    var sum = 0;
+    for (var i = 0; i < expected.length; i++) sum += Math.abs(measured[i]-expected[i]);
+    return 0.5*sum;
+}
+
+// Three times the approximate mean multinomial sampling TVD, with the same floor used by the
+// direct runtime-rule validation.  This separates finite-statistics fluctuations from failures.
+function noiseTvdLimit(expected, samples)
+{
+    if (samples < 1) return 1.0;
+    var meanTvd = 0;
+    for (var i = 0; i < expected.length; i++)
+        meanTvd += Math.sqrt(Math.max(0, 2.0*expected[i]*(1.0-expected[i])/(Math.PI*samples)));
+    return Math.max(0.01, 1.5*meanTvd);
+}
+
+function makeJointHistogram(name, distribution, nTheta, nPhi, title)
+{
+    hist.new2D(name, nTheta, 0, 90, nPhi, 0, 360);
+    var thetaWidth = 90.0/nTheta;
+    var phiWidth = 360.0/nPhi;
+    for (var it = 0; it < nTheta; it++)
+        for (var ip = 0; ip < nPhi; ip++)
+        {
+            var j = it*nPhi+ip;
+            hist.fill(name, (it+0.5)*thetaWidth, (ip+0.5)*phiWidth, distribution[j]);
+        }
+    hist.setTitle(name, title);
+    hist.setAxisTitles(name, "theta_out, deg", "phi_out relative to incidence plane, deg",
+                       "conditional probability per bin");
+    hist.setMinimum(name, 0);
+}
+
+function matchJointScales(expectedName, measuredName, expected, measured)
+{
+    var maximum = 0;
+    for (var i = 0; i < expected.length; i++)
+        maximum = Math.max(maximum, expected[i], measured[i]);
+    hist.setMaximum(expectedName, maximum);
+    hist.setMaximum(measuredName, maximum);
+}
+
+function showAndSaveJoint(name, basketTitle, fileName)
+{
+    hist.draw(name, "colz");
+    grwin.addToBasket(basketTitle);
+    grwin.saveImage(fileName);
+}

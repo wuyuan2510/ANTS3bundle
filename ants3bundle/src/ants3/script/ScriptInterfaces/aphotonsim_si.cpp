@@ -228,6 +228,37 @@ QVariantList APhotonSim_SI::getMonitorAngle(int monitorIndex)
     return vl;
 }
 
+QVariantList APhotonSim_SI::getMonitorAnglePhi(int monitorIndex)
+{
+    QVariantList vl;
+
+    const AMonitorHub & MonHub = AMonitorHub::getConstInstance();
+    const int numMon = MonHub.countMonitors(AMonitorHub::Photon);
+    if (monitorIndex < 0 || monitorIndex >= numMon)
+    {
+        abort("bad monitor index");
+        return vl;
+    }
+
+    AMonitor * mon = MonHub.PhotonMonitors[monitorIndex].Monitor;
+    if (!mon || !mon->anglePhi)
+    {
+        abort("Monitor theta/phi data are not initialized!");
+        return vl;
+    }
+
+    TH2D * data = mon->anglePhi;
+    const int numTheta = data->GetXaxis()->GetNbins();
+    const int numPhi = data->GetYaxis()->GetNbins();
+    for (int it = 0; it < numTheta; it++)
+        for (int ip = 0; ip < numPhi; ip++)
+            vl.push_back( QVariantList{data->GetXaxis()->GetBinCenter(it+1),
+                                       data->GetYaxis()->GetBinCenter(ip+1),
+                                       data->GetBinContent(it+1, ip+1)} );
+
+    return vl;
+}
+
 QVariantList APhotonSim_SI::getMonitorXY(int monitorIndex)
 {
     QVariantList vl;

@@ -1,46 +1,117 @@
 #!/usr/bin/env python3
-# Compare the geometry-simulation reflected theta_out distribution (data/geom_<a>.txt, from
-# validate_geom.js) against the LUT prediction, in linear and polar form. Writes to figures/.
-import os, json, numpy as np, matplotlib
-matplotlib.use("Agg"); import matplotlib.pyplot as plt
-HERE=os.path.dirname(os.path.abspath(__file__))
-LUT=os.path.join(HERE,"..","luts","pooled_28um_fwd.lut")
-FIG=os.path.join(HERE,"figures"); os.makedirs(FIG,exist_ok=True)
-ANG=[10,45,80]
-D=json.load(open(LUT)); B=D["Binning"]; nTi=B["ThetaIncBins"]; nTo=B["ThetaOutBins"]; nPh=B["PhiOutBins"]
-def lut_marginal(a):
-    x=a/(90.0/nTi)-0.5; k0=int(np.floor(x)); f=x-k0
-    if k0<0: k0=0; f=0
-    if k0>=nTi-1: k0=nTi-1; f=0
-    k1=k0+1 if f>0 else k0
-    def marg(k):
-        h=np.array(D["ReflectedHist"][k],float).reshape(nTo,nPh).sum(axis=1); return h/h.sum() if h.sum()>0 else h
-    m=(1-f)*marg(k0)+f*marg(k1); thc=(np.arange(nTo)+0.5)*90.0/nTo
-    return thc, m/(90.0/nTo)
-def meas(a):
-    d=np.loadtxt(os.path.join(HERE,"data",f"geom_{a}.txt")); c=d[:,0]; n=d[:,1]/d[:,1].sum()
-    return c, n/(c[1]-c[0])
-# linear
-fig,axes=plt.subplots(1,3,figsize=(14,4.2))
-for i,a in enumerate(ANG):
-    tl,ml=lut_marginal(a); tm,mm=meas(a)
-    axes[i].plot(tl,ml,'-',color="tab:blue",lw=2,label="LUT prediction")
-    axes[i].step(tm,mm,where="mid",color="tab:red",lw=1.2,label="geometry sim (detector)")
-    axes[i].axvline(a,color="green",ls="--",lw=1,label=f"specular {a}°")
-    axes[i].set_xlabel("θ_out from normal (deg)"); axes[i].set_ylabel("prob. density (/deg)")
-    axes[i].set_title(f"{a}° incidence"); axes[i].grid(alpha=.3); axes[i].legend(fontsize=8)
-fig.suptitle("Reflected θ_out: geometry simulation (source+monitor) vs LUT prediction",fontsize=13)
-fig.tight_layout(rect=(0,0,1,0.95)); fig.savefig(os.path.join(FIG,"validation_geom_linear.png"),dpi=140)
-# polar
-fig=plt.figure(figsize=(13,4.6))
-for i,a in enumerate(ANG):
-    tl,ml=lut_marginal(a); tm,mm=meas(a)
-    ax=fig.add_subplot(1,3,i+1,projection="polar")
-    ax.set_thetamin(0); ax.set_thetamax(90); ax.set_theta_zero_location("N"); ax.set_theta_direction(-1)
-    ax.plot(np.radians(tl),ml,'-',color="tab:blue",lw=2,label="LUT")
-    ax.plot(np.radians(tm),mm,'o',color="tab:red",ms=2,label="geometry sim")
-    ax.plot([np.radians(a)]*2,[0,max(ml.max(),mm.max())],color="green",ls="--",lw=1.2,label=f"specular {a}°")
-    ax.set_title(f"{a}° incidence",fontsize=10,pad=12); ax.legend(fontsize=7,loc="upper right",bbox_to_anchor=(1.16,1.1))
-fig.suptitle("Reflected θ_out in polar form: geometry simulation vs LUT",fontsize=12)
-fig.tight_layout(rect=(0,0,1,0.93)); fig.savefig(os.path.join(FIG,"validation_geom_polar.png"),dpi=140)
-print("wrote figures/validation_geom_linear.png and validation_geom_polar.png")
+"""Plot the ideal dual-monitor geometry experiment produced by validate_geom.js."""
+import json
+import os
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DATA = os.path.join(HERE, "data", "geometry")
+FIG = os.path.join(HERE, "figures")
+os.makedirs(FIG, exist_ok=True)
+LUTS = {
+    "fwd": os.path.join(HERE, "..", "luts", "pooled_28um_fwd.lut"),
+    "rev": os.path.join(HERE, "..", "luts", "pooled_28um_rev.lut"),
+}
+SELECTED = (10.0, 33.3, 45.0, 80.0)
+
+
+def angle_tag(angle):
+    return f"{angle:g}".replace(".", "p")
+
+
+def incidence_mix(data, angle):
+    n_inc = data["Binning"]["ThetaIncBins"]
+    x = angle/(90.0/n_inc)-0.5
+    k0 = int(np.floor(x))
+    frac = x-k0
+    if k0 < 0:
+        return 0, 0, 0.0
+    if k0 >= n_inc-1:
+        return n_inc-1, n_inc-1, 0.0
+    return k0, k0+1 if frac > 0 else k0, frac
+
+
+def expected(data, angle, reflected):
+    n_theta = data["Binning"]["ThetaOutBins"]
+    n_phi = data["Binning"]["PhiOutBins"]
+    counts = data["ReflectedCounts" if reflected else "TransmittedCounts"]
+    histograms = data["ReflectedHist" if reflected else "TransmittedHist"]
+    k0, k1, frac = incidence_mix(data, angle)
+    weights = ((k0, 1.0-frac),) if k0 == k1 else ((k0, 1.0-frac), (k1, frac))
+    probability = sum(weight*counts[k]/data["Launched"][k] for k, weight in weights)
+    marginal = np.zeros(n_theta)
+    for k, weight in weights:
+        hist = np.asarray(histograms[k], dtype=float).reshape(n_theta, n_phi).sum(axis=1)
+        marginal += weight*hist/data["Launched"][k]
+    if probability > 0:
+        marginal /= probability
+    return probability, marginal
+
+
+def measured(direction, outcome, angle):
+    filename = os.path.join(DATA, f"geom_{direction}_{outcome}_{angle_tag(angle)}.txt")
+    values = np.loadtxt(filename)
+    counts = values[:, 1]
+    return values[:, 0], counts/counts.sum() if counts.sum() else counts
+
+
+with open(os.path.join(DATA, "summary.json"), encoding="utf-8") as stream:
+    summary = json.load(stream)
+launched = summary["photonsPerRun"]
+
+# Absolute probabilities.
+fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharey=True)
+for ax, direction in zip(axes, ("fwd", "rev")):
+    with open(LUTS[direction], encoding="utf-8") as stream:
+        lut = json.load(stream)
+    records = [r for r in summary["runs"] if r["direction"] == direction]
+    angles = np.array([r["angle"] for r in records])
+    for outcome, reflected, color in (("R", True, "tab:blue"), ("T", False, "tab:orange")):
+        prediction = np.array([expected(lut, angle, reflected)[0] for angle in angles])
+        key = "reflected" if reflected else "transmitted"
+        observation = np.array([r[key]/launched for r in records])
+        ax.plot(angles, prediction, color=color, lw=2, label=f"{outcome} LUT")
+        ax.plot(angles, observation, "o", color=color, fillstyle="none", label=f"{outcome} geometry")
+    ax.set_title(direction)
+    ax.set_xlabel("incidence angle, deg")
+    ax.grid(alpha=0.3)
+    ax.set_ylim(-0.02, 1.02)
+axes[0].set_ylabel("probability")
+axes[0].legend(fontsize=8)
+fig.suptitle("DavisLUT ideal geometry experiment: absolute R/T", y=0.98)
+fig.tight_layout(rect=(0, 0, 1, 0.90))
+fig.savefig(os.path.join(FIG, "validation_geom_probabilities.png"), dpi=150)
+
+# Conditional theta distributions.
+for direction in ("fwd", "rev"):
+    with open(LUTS[direction], encoding="utf-8") as stream:
+        lut = json.load(stream)
+    n_theta = lut["Binning"]["ThetaOutBins"]
+    theta_lut = (np.arange(n_theta)+0.5)*90.0/n_theta
+    theta_width = 90.0/n_theta
+    fig, axes = plt.subplots(2, len(SELECTED), figsize=(15, 7.6), sharex=True)
+    for col, angle in enumerate(SELECTED):
+        for row, (outcome, reflected) in enumerate((("reflected", True), ("transmitted", False))):
+            _, prediction = expected(lut, angle, reflected)
+            theta_measured, observation = measured(direction, outcome, angle)
+            measured_width = theta_measured[1]-theta_measured[0]
+            ax = axes[row, col]
+            ax.plot(theta_lut, prediction/theta_width, color="tab:blue", lw=2, label="LUT")
+            ax.step(theta_measured, observation/measured_width, where="mid", color="tab:red", lw=1.2,
+                    label="geometry monitor")
+            ax.set_title(f"{angle:g} deg")
+            ax.grid(alpha=0.25)
+            if col == 0:
+                ax.set_ylabel(f"{outcome}\nprobability density, 1/deg")
+            if row == 1:
+                ax.set_xlabel("theta_out, deg")
+    axes[0, 0].legend(fontsize=8)
+    fig.suptitle(f"DavisLUT ideal geometry experiment: {direction}", y=0.98)
+    fig.tight_layout(rect=(0, 0, 1, 0.91), h_pad=2.0)
+    fig.savefig(os.path.join(FIG, f"validation_geom_{direction}.png"), dpi=150)
+
+print("wrote figures/validation_geom_probabilities.png and validation_geom_{fwd,rev}.png")

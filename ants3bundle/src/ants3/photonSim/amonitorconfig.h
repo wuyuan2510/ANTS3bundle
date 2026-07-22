@@ -38,6 +38,9 @@ public:
     int    angleBins = 90;
     double angleFrom = 0;
     double angleTo = 90.0;
+    int    phiBins = 36;
+    double phiFrom = 0;
+    double phiTo = 360.0;
     int    waveBins = 150;
     double waveFrom = -1;
     double waveTo = 148;

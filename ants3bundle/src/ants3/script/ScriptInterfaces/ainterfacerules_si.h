@@ -21,6 +21,7 @@ public:
 public slots:
     QVariantMap generateSurfaceLut(QString heightmapFile, QString outputLutFile, QVariantMap params);
     QVariantMap getLutInfo(QString lutFile);
+    QVariantMap validateSurfaceLut(QString lutFile, QVariantMap params = QVariantMap());
 
     void setLutMaterialRule(QString matFrom, QString matTo, QString lutFile);
     void setLutVolumeRule(QString volFrom, QString volTo, QString lutFile);

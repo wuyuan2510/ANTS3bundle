@@ -459,7 +459,13 @@ void APhotonTracer::checkSpecialVolume(TGeoNode * NodeAfterInterface, bool & ret
             if (!bHaveNormal) N = Navigator->FindNormal(false);
             double cosAngle = 0;
             for (int i=0; i<3; i++) cosAngle += N[i] * Photon.v[i];
-            MonitorHub.PhotonMonitors[iMon].Monitor->fillForPhoton(local[0], local[1], Photon.time, 180.0/3.1415926535*TMath::ACos(cosAngle), Photon.waveIndex);
+            double localDirection[3];
+            Navigator->MasterToLocalVect(Photon.v, localDirection);
+            double phi = 180.0/3.1415926535*TMath::ATan2(localDirection[1], localDirection[0]);
+            if (phi < 0) phi += 360.0;
+            MonitorHub.PhotonMonitors[iMon].Monitor->fillForPhoton(
+                local[0], local[1], Photon.time,
+                180.0/3.1415926535*TMath::ACos(cosAngle), phi, Photon.waveIndex);
             if (MonitorHub.PhotonMonitors[iMon].Monitor->isStopsTracking())
             {
                 SimStat.MonitorKill++;

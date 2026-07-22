@@ -104,6 +104,10 @@ Script unit registered as **`rules`**.
   `n1,n2,wavelength,pixelSizeX/Y,format,photonsPerBin,thetaBins,thetaOutBins,phiOutBins,
   phiSteps,maxBounces,seed,comment,reverseGeometry,alsoReverse`); returns generation stats.
 - `getLutInfo(lutFile)` — returns a LUT's metadata/binning.
+- `validateSurfaceLut(lutFile, params)` — drives the actual
+  `ALutInterfaceRule::calculate()` path and checks R/T/A, conditional 1D/2D angular
+  distributions, output-vector/status invariants, rotated-normal covariance, and a synthetic
+  absorption branch; returns machine-readable measurements and pass/fail limits.
 - `setLutMaterialRule(matFrom, matTo, lutFile)` / `setLutVolumeRule(volFrom, volTo, lutFile)`
   — create a `DavisLUT` rule from a `.lut` file and assign it.
 - `clearMaterialRule(...)` / `clearVolumeRule(...)`.
@@ -259,6 +263,19 @@ full end-to-end run in `lsim`.
    response with a stronger depth slope and lower/more depth-dependent light collection,
    consistent with the paper. Artifacts and a comparison plot are in
    `ants3bundle/script/LUT_test_results/` (see its README for the pipeline and caveats).
+
+4. **Runtime-rule and ideal-geometry conformance** — the validation bundle now calls the real
+   `ALutInterfaceRule::calculate()` for both directions at 0, 10, 32, 33.3, 34, 45, 80 and
+   89 degrees, including full `(theta_out, phi_out)` TVD checks, status/direction invariants,
+   rotated normals and synthetic absorption. A separate dual-monitor experiment then exercises
+   the complete geometry -> tracer -> interface -> monitor path with bulk losses disabled and
+   measures absolute R/T plus both conditional theta distributions. Both suites have independent
+   checkers with process exit codes. The loadable
+   `ants3bundle/script/DavisLUT_reproduce/validation/validate_geom_gui.json` configuration together with the
+   `validate_geom_gui.txt` GUI script provides the same experiment interactively, with the
+   setup/tracks in the Geometry window, reflected/transmitted theta overlays, and direct monitor
+   `(theta_out, phi_out)` histograms compared with the LUT using TVD. The photon monitor now
+   serializes an `AnglePhi` histogram and exposes it as `lsim.getMonitorAnglePhi()`.
 
 Both `ants3` and `lsim` build cleanly (qmake, Qt 6.5.3, ROOT 6.28/04 on this machine).
 

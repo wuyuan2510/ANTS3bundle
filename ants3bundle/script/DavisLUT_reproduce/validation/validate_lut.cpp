@@ -1,9 +1,6 @@
-// MC validation of the DavisLUT runtime sampling. Fires photons at fixed incidence angles onto
-// a LYSO->air normal, runs the ACTUAL runtime sampling routines (ALutSurfaceData::selectThetaBin
-// + sampleOutgoing -- the code ALutInterfaceRule::calculate() calls, incl. the 90deg clamp),
-// reconstructs the outgoing direction with the SAME formula as calculate(), then "detects" the
-// reflected photons by recovering (theta_out, phi_out) and histogramming them -- the round trip a
-// real reflected photon undergoes. Writes measured vs LUT-predicted distributions for comparison.
+// Low-level MC validation of ALutSurfaceData sampling. This intentionally does not claim to
+// validate ALutInterfaceRule::calculate(); validate_rule.js is the primary, production-path test.
+// This small standalone program remains useful for isolating selectThetaBin/sampleOutgoing.
 #include "alutsurfacedata.h"
 #include "ajsontools.h"
 #include <QJsonObject>
@@ -15,6 +12,11 @@
 
 int main(int argc, char** argv)
 {
+    if (argc < 3)
+    {
+        std::fprintf(stderr, "usage: %s <surface.lut> <output-directory> [photons-per-angle]\n", argv[0]);
+        return 2;
+    }
     const char* lutFile = argv[1];
     const char* outDir  = argv[2];
     const long  Nphot   = (argc > 3) ? atol(argv[3]) : 2000000;
@@ -86,10 +88,20 @@ int main(int argc, char** argv)
         auto addbin = [&](int k, double w){
             const std::vector<int>& h = D.ReflectedHist[k]; double sm=0; for (int v:h) sm+=v;
             if (sm>0) for (size_t j=0;j<h.size();j++) pred[j] += w*h[j]/sm; };
-        addbin(k0, 1-f); if (k1!=k0) addbin(k1, f);
+        // Conditional on reflection, incidence-bin weights must also contain R(k).
+        if (R_lut > 0)
+        {
+            addbin(k0, (1-f)*Rof(k0)/R_lut);
+            if (k1!=k0) addbin(k1, f*Rof(k1)/R_lut);
+        }
 
         char fn[512]; snprintf(fn, sizeof(fn), "%s/valid_%02.0f.txt", outDir, angles[a]);
         FILE* fp = fopen(fn, "w");
+        if (!fp)
+        {
+            std::fprintf(stderr, "cannot write %s\n", fn);
+            return 3;
+        }
         fprintf(fp, "# angle=%.1f nThetaOut=%d nPhiOut=%d R_meas=%.4f R_lut=%.4f reflected=%ld transmitted=%ld\n",
                 angles[a], nTo, nPh, reflected/(double)Nphot, R_lut, reflected, transmitted);
         for (int it=0; it<nTo; it++) for (int ip=0; ip<nPh; ip++)

@@ -31,6 +31,7 @@ public slots:
     QVariantList getMonitorWavelength(int monitorIndex);
     QVariantList getMonitorTime(int monitorIndex, QString units);
     QVariantList getMonitorAngle(int monitorIndex);
+    QVariantList getMonitorAnglePhi(int monitorIndex);
     QVariantList getMonitorXY(int monitorIndex);
 
     void loadStatistics(QString fileName);

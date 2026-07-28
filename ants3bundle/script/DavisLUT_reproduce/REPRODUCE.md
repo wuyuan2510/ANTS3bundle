@@ -98,9 +98,6 @@ unrotated same-seed baseline. See `validation/VALIDATION_EN.md`.
   Every one of the 14 forward/reverse generation pairs reported zero inconsistent escapes and
   zero anomalies. The pooled 5/14/28 um LUTs contain 120000/120000/320000 launched photons per
   incidence bin.
-- `results/pooled_Rtheta_3way.png` is retained only as a historical escape-classification
-  diagnostic from before the seam repair. The production reference plots are
-  `pooled_Rtheta.png` and `pooled_DOI_old_vs_LUT.png`.
 - Single-wavelength LUTs (fixed n1/n2), as in Roncali & Cherry 2013.
 - `run_reproduce.py` resolves all paths relative to itself, so it works from a fresh checkout
   once ANTS3 is built.

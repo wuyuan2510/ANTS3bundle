@@ -106,6 +106,20 @@ QString ALutSurfaceGenerator::finalizeHeightmap()
             if (z < Zmin) Zmin = z;
             if (z > Zmax) Zmax = z;
         }
+
+    double seamMax = 0;
+    for (int iy = 0; iy < Ny; ++iy)
+        seamMax = std::max(seamMax, std::abs(Z[iy][Nx-1] - Z[iy][0]));
+    for (int ix = 0; ix < Nx; ++ix)
+        seamMax = std::max(seamMax, std::abs(Z[Ny-1][ix] - Z[0][ix]));
+    const double heightScale = std::max({1.0, std::abs(Zmin), std::abs(Zmax), Zmax-Zmin});
+    if (seamMax > 1.0e-9 * heightScale)
+        return QString(
+            "Heightmap opposite edges do not meet (maximum periodic seam is %1 height units). "
+            "Direct periodic tiling would create an open vertical gap; use a C0-continuous "
+            "periodic or mirror-tiled heightmap.")
+            .arg(seamMax, 0, 'g', 8);
+
     return "";
 }
 
@@ -165,8 +179,10 @@ bool ALutSurfaceGenerator::intersectTriangle(const double * origin, const double
 }
 
 bool ALutSurfaceGenerator::findIntersection(const double * origin, const double * dir,
-                                            double & tHit, double * hitNormal)
+                                            double & tHit, double * hitNormal, bool * crossedPeriodicSeam)
 {
+    if (crossedPeriodicSeam) *crossedPeriodicSeam = false;
+
     const int cellsX = Nx - 1;
     const int cellsY = Ny - 1;
     const double tMin = 1e-9 * (Dx + Dy);
@@ -245,18 +261,28 @@ bool ALutSurfaceGenerator::findIntersection(const double * origin, const double 
             tMaxY += tDeltaY;
         }
 
+        const int newPeriodX = (ix >= 0 ? ix / cellsX : (ix + 1) / cellsX - 1);
+        const int newPeriodY = (iy >= 0 ? iy / cellsY : (iy + 1) / cellsY - 1);
+        if (newPeriodX != periodX)
+        {
+            periodX = newPeriodX;
+            Wraps++;
+            if (crossedPeriodicSeam) *crossedPeriodicSeam = true;
+        }
+        if (newPeriodY != periodY)
+        {
+            periodY = newPeriodY;
+            Wraps++;
+            if (crossedPeriodicSeam) *crossedPeriodicSeam = true;
+        }
+
         // once above the highest (moving up) or below the lowest (moving down) point of the
         // surface, no intersection is possible anymore
         const double zEntry = origin[2] + dir[2] * tEntry;
         if (dir[2] > 0 && zEntry > Zmax) return false;
         if (dir[2] < 0 && zEntry < Zmin) return false;
-
-        const int newPeriodX = (ix >= 0 ? ix / cellsX : (ix + 1) / cellsX - 1);
-        const int newPeriodY = (iy >= 0 ? iy / cellsY : (iy + 1) / cellsY - 1);
-        if (newPeriodX != periodX) { periodX = newPeriodX; Wraps++; }
-        if (newPeriodY != periodY) { periodY = newPeriodY; Wraps++; }
     }
-    return false;   // traversal cap exceeded (near-horizontal ray) -> caller classifies by direction
+    return false;   // traversal cap exceeded (near-horizontal ray) -> caller classifies by medium
 }
 
 int ALutSurfaceGenerator::tracePhoton(double * pos, double * dir, int & bounces)
@@ -266,22 +292,34 @@ int ALutSurfaceGenerator::tracePhoton(double * pos, double * dir, int & bounces)
     const double epsOffset = 1e-6 * std::min(Dx, Dy);
 
     bool inMedium1 = true;
+    bool crossedPeriodicSeamInHistory = false;
 
     while (true)
     {
         double tHit;
         double normal[3];
-        if (!findIntersection(pos, dir, tHit, normal))
+        bool crossedPeriodicSeam = false;
+        const bool foundIntersection = findIntersection(pos, dir, tHit, normal, &crossedPeriodicSeam);
+        crossedPeriodicSeamInHistory = crossedPeriodicSeamInHistory || crossedPeriodicSeam;
+        if (!foundIntersection)
         {
             // Classify an escaping photon by the medium it is in, following Roncali & Cherry:
             // a photon whose last interface event was a reflection is still in the incident
             // medium (crystal) and counts as reflected/back; one that has transmitted through
             // the interface is in the outer medium and counts as transmitted/forward. The
             // reflect/refract history (not the momentary flight direction) defines the fate,
-            // so no photon is ever discarded. The counters record the minority of photons whose
-            // flight direction disagrees with their medium (steep-facet multi-bounce escapees).
-            if (dir[2] > 0 &&  inMedium1) UpEscapeReclass++;    // reflected photon flying upward
-            if (dir[2] < 0 && !inMedium1) DownEscapeReclass++;  // transmitted photon flying downward
+            // so no photon is ever discarded. The counters record photons whose flight direction
+            // disagrees with their medium; for a continuous height field this should be zero.
+            if (dir[2] > 0 && inMedium1)
+            {
+                UpEscapeReclass++;    // reflected photon flying upward
+                if (crossedPeriodicSeamInHistory) UpEscapeAfterSeam++;
+            }
+            if (dir[2] < 0 && !inMedium1)
+            {
+                DownEscapeReclass++;  // transmitted photon flying downward
+                if (crossedPeriodicSeamInHistory) DownEscapeAfterSeam++;
+            }
             return inMedium1 ? 1 : -1;
         }
 
@@ -394,6 +432,7 @@ QString ALutSurfaceGenerator::generate(ALutSurfaceData & result)
     Anomalies = 0;
     Wraps = 0;
     UpEscapeReclass = DownEscapeReclass = DegenerateDiscarded = 0;
+    UpEscapeAfterSeam = DownEscapeAfterSeam = 0;
     long long bounceSum = 0;
     long long tallied = 0;
 

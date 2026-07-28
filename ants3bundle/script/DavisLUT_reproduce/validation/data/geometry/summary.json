@@ -1,134 +1,134 @@
 {
-    "photonsPerRun": 300000,
-    "runs": [
-        {
-            "angle": 0,
-            "direction": "fwd",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 115455,
-            "transmitted": 184545
-        },
-        {
-            "angle": 10,
-            "direction": "fwd",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 123781,
-            "transmitted": 176219
-        },
-        {
-            "angle": 32,
-            "direction": "fwd",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 186131,
-            "transmitted": 113869
-        },
-        {
-            "angle": 33.3,
-            "direction": "fwd",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 190285,
-            "transmitted": 109715
-        },
-        {
-            "angle": 34,
-            "direction": "fwd",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 192835,
-            "transmitted": 107165
-        },
-        {
-            "angle": 45,
-            "direction": "fwd",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 231136,
-            "transmitted": 68864
-        },
-        {
-            "angle": 80,
-            "direction": "fwd",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 289783,
-            "transmitted": 10217
-        },
-        {
-            "angle": 89,
-            "direction": "fwd",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 294070,
-            "transmitted": 5930
-        },
-        {
-            "angle": 0,
-            "direction": "rev",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 22749,
-            "transmitted": 277251
-        },
-        {
-            "angle": 10,
-            "direction": "rev",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 23994,
-            "transmitted": 276006
-        },
-        {
-            "angle": 32,
-            "direction": "rev",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 30541,
-            "transmitted": 269459
-        },
-        {
-            "angle": 33.3,
-            "direction": "rev",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 30949,
-            "transmitted": 269051
-        },
-        {
-            "angle": 34,
-            "direction": "rev",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 31094,
-            "transmitted": 268906
-        },
-        {
-            "angle": 45,
-            "direction": "rev",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 36479,
-            "transmitted": 263521
-        },
-        {
-            "angle": 80,
-            "direction": "rev",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 59904,
-            "transmitted": 240096
-        },
-        {
-            "angle": 89,
-            "direction": "rev",
-            "launched": 300000,
-            "missing": 0,
-            "reflected": 62640,
-            "transmitted": 237360
-        }
-    ],
-    "wavelength": 420
+  "photonsPerRun": 300000,
+  "wavelength": 420,
+  "runs": [
+    {
+      "direction": "fwd",
+      "angle": 0,
+      "reflected": 115283,
+      "transmitted": 184717,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "fwd",
+      "angle": 10,
+      "reflected": 121389,
+      "transmitted": 178611,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "fwd",
+      "angle": 32,
+      "reflected": 180219,
+      "transmitted": 119781,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "fwd",
+      "angle": 33.3,
+      "reflected": 184723,
+      "transmitted": 115277,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "fwd",
+      "angle": 34,
+      "reflected": 187346,
+      "transmitted": 112654,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "fwd",
+      "angle": 45,
+      "reflected": 226066,
+      "transmitted": 73934,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "fwd",
+      "angle": 80,
+      "reflected": 292640,
+      "transmitted": 7360,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "fwd",
+      "angle": 89,
+      "reflected": 297983,
+      "transmitted": 2017,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "rev",
+      "angle": 0,
+      "reflected": 21284,
+      "transmitted": 278716,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "rev",
+      "angle": 10,
+      "reflected": 21276,
+      "transmitted": 278724,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "rev",
+      "angle": 32,
+      "reflected": 22227,
+      "transmitted": 277773,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "rev",
+      "angle": 33.3,
+      "reflected": 22611,
+      "transmitted": 277389,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "rev",
+      "angle": 34,
+      "reflected": 22640,
+      "transmitted": 277360,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "rev",
+      "angle": 45,
+      "reflected": 24093,
+      "transmitted": 275907,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "rev",
+      "angle": 80,
+      "reflected": 44236,
+      "transmitted": 255764,
+      "launched": 300000,
+      "missing": 0
+    },
+    {
+      "direction": "rev",
+      "angle": 89,
+      "reflected": 60708,
+      "transmitted": 239292,
+      "launched": 300000,
+      "missing": 0
+    }
+  ]
 }

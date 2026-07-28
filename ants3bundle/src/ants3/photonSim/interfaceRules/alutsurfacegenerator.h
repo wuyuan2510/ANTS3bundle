@@ -22,11 +22,13 @@ class ARandomHub;
 //    unpolarized Fresnel reflection probability; the photon is specularly reflected or
 //    Snell-refracted about the LOCAL normal and traced further, so multiple reflections,
 //    shadowing and masking are modelled directly;
-//  * the surface is tiled periodically in x and y (note: a generic heightmap is not
-//    exactly periodic, so there is a seam at the tile border - negligible for
-//    statistically uniform roughness);
-//  * a photon escaping downward (in medium 1) is tallied as reflected, escaping upward
-//    (in medium 2) as transmitted. Outgoing azimuth is stored relative to the incidence
+//  * the surface is tiled periodically in x and y. A generic AFM heightmap is not
+//    periodic, so opposite edges do not meet and the current tiling has an open seam.
+//    Diagnostics show that this seam, rather than ordinary triangle-edge precision,
+//    causes the direction/medium-inconsistent escapes. Heightmap loading therefore
+//    rejects non-matching opposite edges; use a continuous tiling before generation;
+//  * an escaping photon is classified by the medium flag: medium 1 is reflected and
+//    medium 2 is transmitted. Outgoing azimuth is stored relative to the incidence
 //    plane in the frame ex = tangential projection of the incident direction,
 //    ey = meanNormal x ex, where meanNormal (+z here) points along the initial photon
 //    direction: the same frame ALutInterfaceRule reconstructs at runtime.
@@ -71,11 +73,14 @@ public:
     double meanBounces() const {return MeanBounces;}
     long   anomalies()   const {return Anomalies;}  // photons lost due to numerical issues / bounce limit
     long   wraps()       const {return Wraps;}      // periodic wrap-around events
-    // diagnostics: photons whose reflect/refract medium flag disagreed with the actual escape
-    // geometry after steep multi-bounce (classified by direction instead), and truly degenerate ones:
-    long   upEscapeReclassified()   const {return UpEscapeReclass;}    // labelled crystal but escaped upward -> counted as transmitted
-    long   downEscapeReclassified() const {return DownEscapeReclass;}  // labelled air but escaped downward -> counted as reflected
-    long   degenerateDiscarded()    const {return DegenerateDiscarded;} // exactly horizontal escape, discarded
+    // Diagnostics for direction/medium-inconsistent escapes. They are still classified by
+    // medium, but should be zero for a continuous height field. "AfterSeam" means the photon
+    // crossed at least one periodic tile boundary anywhere in its traced history.
+    long   upEscapeReclassified()   const {return UpEscapeReclass;}      // medium 1 but escaped upward
+    long   downEscapeReclassified() const {return DownEscapeReclass;}    // medium 2 but escaped downward
+    long   upEscapeAfterSeam()      const {return UpEscapeAfterSeam;}
+    long   downEscapeAfterSeam()    const {return DownEscapeAfterSeam;}
+    long   degenerateDiscarded()    const {return DegenerateDiscarded;}  // bounce-limit termination
 
 private:
     ARandomHub & RandomHub;
@@ -91,6 +96,7 @@ private:
     long   Anomalies = 0;
     long   Wraps = 0;
     long   UpEscapeReclass = 0, DownEscapeReclass = 0, DegenerateDiscarded = 0;
+    long   UpEscapeAfterSeam = 0, DownEscapeAfterSeam = 0;
 
     QString validateConfig() const;
     QString finalizeHeightmap();   // computes Zmin/Zmax, validates the grid
@@ -103,7 +109,7 @@ private:
     // 2D DDA walk over the heightmap cells (periodic in x,y) searching for the nearest
     // triangle intersection; returns true and the distance/facet normal (not flipped)
     bool findIntersection(const double * origin, const double * dir,
-                          double & tHit, double * hitNormal);
+                          double & tHit, double * hitNormal, bool * crossedPeriodicSeam = nullptr);
 
     // Moller-Trumbore ray-triangle intersection; accepts hits with t > tMin
     static bool intersectTriangle(const double * origin, const double * dir,

@@ -5,4 +5,5 @@ Dispatcher-*/
 PhotonSimLog-*.log
 geom_out/
 geom_gui_out/
+geom_gui_rotated_out/
 __pycache__/

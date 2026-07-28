@@ -44,7 +44,7 @@ and `AInterfaceRules_SI` below.)
 
 **Populating the LUT — "construct the data ourselves".** The LUTs are built by a self-contained
 offline heightmap ray tracer over the measured AFM height field Z(x,y) (local-normal Fresnel +
-Snell/TIR, multi-bounce, periodic tiling). This is essentially the paper's own method, so it
+Snell/TIR, multi-bounce, continuous mirror tiling). This is essentially the paper's own method, so it
 **avoids the ROOT-upgrade / tessellated-volume path entirely** — no infrastructure change was
 needed for a working rule + generator + validation. The tessellated-volume route (updated ROOT +
 tessellated object shapes + navigator validation) remains a worthwhile future item, but it is not
@@ -96,7 +96,9 @@ Offline generator (built into `ants3` only, not `lsim`).
 - Internals: grid->triangles; 2D DDA traversal (`findIntersection`) with Möller-Trumbore
   (`intersectTriangle`); per-facet unpolarized Fresnel (`fresnelReflection`, incl. TIR) with
   specular reflection or Snell refraction about the *local* normal; multi-bounce loop
-  (`tracePhoton`); periodic lateral tiling. Reports mean bounces, anomalies and wrap count.
+  (`tracePhoton`); lateral tiling. Direct periodic repetition is only valid when opposite
+  heightmap edges match; production inputs are mirror-tiled to make the boundary C0-continuous.
+  Reports mean bounces, anomalies, wrap count and inconsistent-escape diagnostics.
 
 ### `src/ants3/script/ScriptInterfaces/ainterfacerules_si.{h,cpp}` — class `AInterfaceRules_SI`
 Script unit registered as **`rules`**.
@@ -156,9 +158,16 @@ plane (levels out sample tilt). Write it as either:
 - an **x y z** three-column file on a regular grid -> use `format:"xyz"`.
 Helper: `prep_afm.py` (does exactly this; heights written in um, pixel = 10 um / 511).
 
-**2. Generate the LUT** from the leveled heightmap, in the ANTS3 Script window:
+The leveled AFM patch is generally not periodic. Before LUT generation, diagnose and mirror-tile
+it so that repeated boundaries are height-continuous:
+
+```bash
+python3 diagnose_heightmap_seam.py lyso_leveled.txt --mirror-output lyso_mirror.txt
+```
+
+**2. Generate the LUT** from the mirror-tiled heightmap, in the ANTS3 Script window:
 ```js
-rules.generateSurfaceLut("lyso_leveled.txt", "lyso.lut",
+rules.generateSurfaceLut("lyso_mirror.txt", "lyso.lut",
     { n1:1.824, n2:1.0, wavelength:420,
       pixelSizeX:0.0195694, pixelSizeY:0.0195694,   // um (10um / 511)
       format:"matrix", photonsPerBin:40000, alsoReverse:true });
@@ -190,8 +199,9 @@ headless worker `lsim <workdir> <config.json> <id>` (when running the worker dir
 otherwise fills in per worker).
 
 **5. Analyze** `SensorSignals.txt` (per-event sensor signals). For the dual-ended DOI studies
-here the observable is `(s0-s1)/(s0+s1)` vs source depth; `plot_signal_vs_depth_hist_fits.py`
-histograms it per depth with Gaussian fits.
+here the observable is `(s0-s1)/(s0+s1)` vs source depth. The reproducibility bundle's
+`run_reproduce.py` plots it versus depth and also produces per-depth histograms with Gaussian
+fits.
 
 ---
 
@@ -269,76 +279,93 @@ full end-to-end run in `lsim`.
    89 degrees, including full `(theta_out, phi_out)` TVD checks, status/direction invariants,
    rotated normals and synthetic absorption. A separate dual-monitor experiment then exercises
    the complete geometry -> tracer -> interface -> monitor path with bulk losses disabled and
-   measures absolute R/T plus both conditional theta distributions. Both suites have independent
-   checkers with process exit codes. The loadable
+   measures absolute R/T plus the conditional theta and joint `(theta,phi)` distributions.
+   A rigidly rotated complete-geometry regression uses Euler angles `(37,29,23) deg` at 45-degree
+   incidence in both directions. Its same-seed baseline and rotated monitor histograms are
+   identical bin by bin, with zero missing photons, directly validating the LUT rule's
+   local-to-global outgoing-direction conversion.
+   Each geometry case is run as a fresh static `lsim` process; the earlier multi-run GUI
+   dispatcher loop was found to reuse source state across nominally different angles and has been
+   deprecated. Both suites have independent process exit codes. The loadable
    `ants3bundle/script/DavisLUT_reproduce/validation/validate_geom_gui.json` configuration together with the
    `validate_geom_gui.txt` GUI script provides the same experiment interactively, with the
    setup/tracks in the Geometry window, reflected/transmitted theta overlays, and direct monitor
    `(theta_out, phi_out)` histograms compared with the LUT using TVD. The photon monitor now
    serializes an `AnglePhi` histogram and exposes it as `lsim.getMonitorAnglePhi()`.
+   `validate_rotated_geom_gui.txt` rebuilds that setup with editable Euler angles and provides
+   the corresponding interactive local-to-global conversion test.
 
 Both `ants3` and `lsim` build cleanly (qmake, Qt 6.5.3, ROOT 6.28/04 on this machine).
 
 ---
 
-## Generator escape handling (investigation — the most sensitive modeling choice)
+## Generator periodic-seam diagnosis (2026-07-24)
 
-Early rough-surface runs discarded a few-to-16 percent of photons as "anomalies" (higher for
-steeper surfaces). Investigation with per-cause counters showed:
+Earlier generator runs produced a sizeable population whose direction disagreed with its medium:
+typically a photon was still in medium 1 after reflection but `dir.z > 0`. Medium-based fallback
+classification conserved it as reflected, and clamping the incompatible reflected polar angle
+put it into the final `theta_out = 90 deg` bin. Earlier revisions of this document described that
+population as a normal height-field multi-bounce escape. That explanation was wrong.
 
-- It was **not** near-horizontal DDA-cap exhaustion and **not** the bounce limit (both zero).
-- A **watertight ray/triangle intersection** (Woop-Benthin-Wald) was implemented and tested to
-  rule out grazing edge-leaks; it produced byte-identical results (zero effect), so that
-  hypothesis was rejected and the watertight code was reverted (the generator keeps the
-  simpler, validated Moller-Trumbore `intersectTriangle`).
-- **Cause:** a height-field multi-bounce situation. A photon reflecting off a steep facet inside
-  a micro-valley can fly upward and escape over a ridge without re-hitting the surface, so its
-  flight direction (upward) disagrees with its medium (still the incident crystal, since it only
-  ever reflected). ~13% of photons on these steep surfaces, concentrated at grazing incidence.
+For a continuous height field `z = Z(x,y)`, a ray that starts on the lower side and eventually
+rises above `Zmax` must intersect the surface again: the continuous signed height
+`g(t) = z_ray(t)-Z(x_ray(t),y_ray(t))` changes from negative to positive. Therefore
+"medium 1 + upward + no next intersection" proves that the numerical surface is open or an
+intersection was missed; lack of overhangs cannot explain it.
 
-Three ways to classify such an escaping photon were implemented and compared:
+The actual cause is the **discontinuous periodic tile seam**. The generator repeats AFM indices
+periodically, but opposite edges of a generic leveled AFM patch do not have matching heights and
+no vertical wall joins them. For the representative 28 um location, ordinary neighbor-step RMS
+is only about `0.010--0.013 um`, while the x/y periodic edge-jump RMS is
+`0.616/0.697 um`. Across all eight 28 um scans used in the pooled LUT, edge jumps are about
+`20--132` times their internal neighbor-step RMS.
 
-| handling | grazing R(80 deg) | photons | DOI vs old microfacet |
-|---|---|---|---|
-| discard (initial) | ~0.97 (on kept) | loses ~13% | much stronger (artefact) |
-| geometry / direction | ~0.84 | conserved | much stronger (artefact) |
-| **medium-based (Roncali & Cherry)** | **~0.97** | **conserved** | **≈ identical** |
+Diagnostics added to `ALutSurfaceGenerator` record whether every inconsistent escape crossed a
+periodic boundary anywhere in its history. A same-seed A/B test on the representative scan gave:
 
-**Committed default: medium-based**, following the paper: a photon's fate is set by the medium
-it is in (last event a reflection => still in the crystal => reflected; has transmitted through
-=> in the outer medium => transmitted), never discarded. It is byte-identical on the flat-plane
-case (TIR still R=1 above the critical angle), reproduces the paper's fig-7a reflectance shape,
-and conserves photons. Diagnostic getters `upEscapeReclassified()` / `downEscapeReclassified()` /
-`degenerateDiscarded()` report the minority whose direction disagrees with their medium.
+| test | photons | UpEscape | DownEscape | reflected last-theta-bin / R |
+|---|---:|---:|---:|---:|
+| original discontinuous periodic tiling, 40 incidence bins | 40,000 | 2,783 | 154 | 9.82% |
+| continuous x/y mirror tiling, same settings | 40,000 | 0 | 0 | 0.17% |
+| original tiling, 45 deg only | 100,000 | 8,509 | 486 | 11.19% |
+| continuous mirror tiling, 45 deg only | 100,000 | 0 | 0 | 0.17% |
 
-**Key finding:** the escape handling is the single most sensitive modeling choice here — far more
-than watertight-vs-MT (zero effect). An earlier draft of these notes claimed the LUT gives
-"stronger depth dependence than the microfacet model"; that was an **artefact of the discard /
-geometry handling**. With the paper-faithful medium-based rule the ensemble LUT and the old
-`CustomNormal` microfacet model (which is itself built from the *same* measured AFM normals) give
-**nearly identical** DOI-vs-depth for this crystal (e.g. -0.202 vs -0.197 at 13 mm). This does
-not contradict Roncali & Cherry (whose comparison was against the cruder single-sigma UNIFIED
-Gaussian, not a measured-normal distribution) — it is two measured-surface models agreeing, a
-mutual-consistency check. See `ants3bundle/script/LUT_test_results/`:
-`pooled_Rtheta_3way.png`, `pooled_DOI_old_vs_LUT.png`, and `*_discard.* / *_geom.*` for the
-alternative-handling artifacts.
+All `8,509/8,509` upward and `486/486` downward inconsistent escapes in the 45-degree original
+run had crossed a seam. The continuous mirror case still recorded `32,852` normal periodic-wrap
+events, so the cure is continuity, not avoiding boundary crossings. A previously tested
+watertight triangle-intersection replacement had no effect because ordinary shared triangle
+edges were not the opening.
 
-**The spike at theta_out = 90 deg in the reflected angular distribution.** When the stored
-reflected histogram is viewed for a given incidence bin (GUI "Show angular distribution"), there
-is a tall isolated spike at theta_out = 90 deg (grazing) that the transmitted histogram does not
-show. This is the direct fingerprint of the medium-based rule, not a tracer artifact: the ~10-15%
-of photons that reflect off a steep facet and fly *upward*, escaping without re-hitting the
-surface, are (correctly, per the paper) counted as reflected — but their outgoing direction is
-upward, which is geometrically inconsistent with a reflected ray, so the tally clamps their
-outgoing polar angle to 90 deg and they all land in the last theta_out bin. For the 28 um LUT at
-~46 deg incidence this is ~12.5% of reflected photons (vs only ~4% for the mirror case on the
-transmitted side, hence no comparable spike there). It is bounded and harmless to transport: it
-does not change the R/T split or the transmitted distribution, and at run time these become
-grazing reflections (v.N ~ 0), which is why the grazing reflectance stays high (~0.97, consistent
-with the paper's fig 7a). It is fundamentally the height-field limitation (no overhangs). If a
-cleaner reflected map is wanted, the up-flyers can be spread over the near-grazing theta_out bins
-instead of clamped to exactly 90 deg (cosmetic, negligible effect on transport); the tessellated
-route would remove the ambiguity entirely.
+**Impact:** the `theta_out = 90 deg` reflected spike is a seam artifact, not expected surface
+physics. The old pooled LUTs and plots generated with discontinuous tiling are legacy diagnostics.
+Medium-based classification remains a useful invariant and count-conserving fallback, but it
+must not be used to hide a non-zero inconsistent-escape count. For a production LUT, both
+`upEscapeReclassified` and `downEscapeReclassified` should be zero (apart from an explicitly
+justified numerical tolerance).
+
+The preferred repair is continuous mirror tiling (or another explicitly C0-periodic
+preprocessing), followed by regeneration of every per-location forward/reverse LUT, pooling, and
+rerunning the rule/geometry/DOI validation. Simply spreading the last-bin spike or changing it to
+direction-based classification would mask the open seam without repairing the ray geometry.
+
+That repair was completed on 2026-07-24:
+
+- 14 AFM locations were plane-leveled and mirror-tiled to `1023 x 1023` nodes; all x/y seam
+  differences were exactly zero;
+- 14 forward/reverse pairs were generated with 40 incidence bins and 40000 photons per bin;
+  every pair reported zero anomalies, zero bounce-limit discards, and zero inconsistent escapes;
+- pooled 5/14/28 um LUTs contain 120000/120000/320000 photons per incidence bin with exact
+  count and histogram conservation;
+- direct runtime validation passed in both directions; the isolated-process geometry validation
+  passed all 16 cases with zero missing photons; the rotated complete-geometry covariance test
+  passed in both directions; the 5/14/28 um, four-depth DOI rerun completed with 1000 events per
+  depth;
+- the reflected last-theta-bin fraction near 46 deg fell from about
+  `4.0/9.9/12.5%` for the old 5/14/28 um forward LUTs to
+  `0.15/0.14/0.16%` after the repair.
+
+The generator now rejects a heightmap at load time when opposite x/y edges do not match within
+numerical tolerance, preventing accidental regeneration of the open-seam artifact.
 
 ---
 
@@ -347,5 +374,6 @@ route would remove the ambiguity entirely.
 - Single-wavelength LUT (applied to all photons regardless of `waveIndex`); a wavelength axis
   is the intended `FormatVersion 2` extension.
 - LUT generation is single-threaded and exposed via script only (no GUI "generate" dialog yet).
-- The periodic-tiling seam (heightmap edges do not match) remains a minor unhandled
-  discontinuity; mirror-tiling the map would remove it if needed.
+- Periodic DDA requires matching opposite heightmap edges and does not synthesize vertical seam
+  walls. Non-matching inputs are rejected; use continuous mirror tiling (or another C0-periodic
+  construction) and require zero inconsistent-escape counters.

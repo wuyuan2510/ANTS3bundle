@@ -1,0 +1,121 @@
+{
+  "passed": true,
+  "photonsPerRun": 300000,
+  "incidenceAngle": 45.0,
+  "rotationAngles": [
+    37.0,
+    29.0,
+    23.0
+  ],
+  "rotationMatrix": [
+    [
+      0.5294829079457877,
+      -0.7965680253489913,
+      0.29176571283288505
+    ],
+    [
+      0.8269002634686701,
+      0.40782694562391025,
+      -0.38718617834126773
+    ],
+    [
+      0.18943021002130755,
+      0.4462696084371877,
+      0.8746197071393957
+    ]
+  ],
+  "rotatedEx": [
+    0.5294829079457877,
+    0.8269002634686701,
+    0.18943021002130755
+  ],
+  "rotatedNormal": [
+    0.29176571283288505,
+    -0.38718617834126773,
+    0.8746197071393957
+  ],
+  "summaries": [
+    {
+      "direction": "fwd",
+      "baselineMissing": 0,
+      "rotatedMissing": 0,
+      "passed": true
+    },
+    {
+      "direction": "rev",
+      "baselineMissing": 0,
+      "rotatedMissing": 0,
+      "passed": true
+    }
+  ],
+  "metrics": [
+    {
+      "baselineHits": 226239,
+      "rotatedHits": 226239,
+      "rotatedProbability": 0.75413,
+      "expectedProbability": 0.75345,
+      "probabilityLimit": 0.004721395101026814,
+      "thetaTvdToLut": 0.005982121054318843,
+      "thetaTvdLimit": 0.01553436608334429,
+      "jointTvdToLut": 0.028848779630601704,
+      "jointTvdLimit": 0.08259135425274197,
+      "baselineRotatedThetaTvd": 0.0,
+      "baselineRotatedJointTvd": 0.0,
+      "invarianceLimit": 0.002,
+      "passed": true,
+      "direction": "fwd",
+      "outcome": "reflected"
+    },
+    {
+      "baselineHits": 73761,
+      "rotatedHits": 73761,
+      "rotatedProbability": 0.24587,
+      "expectedProbability": 0.24655,
+      "probabilityLimit": 0.004721395101026813,
+      "thetaTvdToLut": 0.006543929242485842,
+      "thetaTvdLimit": 0.025400175615336543,
+      "jointTvdToLut": 0.032592875508703587,
+      "jointTvdLimit": 0.09789108486952305,
+      "baselineRotatedThetaTvd": 0.0,
+      "baselineRotatedJointTvd": 0.0,
+      "invarianceLimit": 0.002,
+      "passed": true,
+      "direction": "fwd",
+      "outcome": "transmitted"
+    },
+    {
+      "baselineHits": 24200,
+      "rotatedHits": 24200,
+      "rotatedProbability": 0.08066666666666666,
+      "expectedProbability": 0.081109375,
+      "probabilityLimit": 0.00299059815328859,
+      "thetaTvdToLut": 0.018412279039851265,
+      "thetaTvdLimit": 0.04894478696178377,
+      "jointTvdToLut": 0.09043202554962418,
+      "jointTvdLimit": 0.2729455572176663,
+      "baselineRotatedThetaTvd": 0.0,
+      "baselineRotatedJointTvd": 0.0,
+      "invarianceLimit": 0.002,
+      "passed": true,
+      "direction": "rev",
+      "outcome": "reflected"
+    },
+    {
+      "baselineHits": 275800,
+      "rotatedHits": 275800,
+      "rotatedProbability": 0.9193333333333333,
+      "expectedProbability": 0.918890625,
+      "probabilityLimit": 0.0029905981532885907,
+      "thetaTvdToLut": 0.004518423606831033,
+      "thetaTvdLimit": 0.01210328814156087,
+      "jointTvdToLut": 0.01745383658712215,
+      "jointTvdLimit": 0.050028437370544895,
+      "baselineRotatedThetaTvd": 0.0,
+      "baselineRotatedJointTvd": 0.0,
+      "invarianceLimit": 0.002,
+      "passed": true,
+      "direction": "rev",
+      "outcome": "transmitted"
+    }
+  ]
+}

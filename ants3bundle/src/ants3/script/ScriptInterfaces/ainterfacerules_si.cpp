@@ -41,7 +41,9 @@ AInterfaceRules_SI::AInterfaceRules_SI() :
                                  "  reverseGeometry: true if the photons arrive from the medium ABOVE the heightmap surface (default false)\n"
                                  "  alsoReverse: true = also generate the LUT for the reverse direction (swapped n1/n2) and save it\n"
                                  "               to a file with '_reverse' appended to the name\n"
-                                 "Returns an object with generation statistics.\n"
+                                 "Opposite heightmap edges must match (C0-periodic); mirror-tile generic AFM scans first.\n"
+                                 "Returns an object with generation statistics, including wraps and\n"
+                                 "direction/medium-inconsistent escape counters for periodic-seam diagnostics.\n"
                                  "Note: the LUT is direction-specific, assign it only for the n1->n2 material pair!";
     Help["getLutInfo"]         = "Returns the metadata and binning info of the given surface LUT file as an object";
     Help["validateSurfaceLut"] = "Validates a surface LUT through the actual ALutInterfaceRule::calculate() runtime path.\n"
@@ -139,6 +141,11 @@ QVariantMap AInterfaceRules_SI::generateSurfaceLut(QString heightmapFile, QStrin
         summary["meanBounces"] = generator.meanBounces();
         summary["anomalies"]   = (qlonglong)generator.anomalies();
         summary["wraps"]       = (qlonglong)generator.wraps();
+        summary["upEscapeReclassified"]   = (qlonglong)generator.upEscapeReclassified();
+        summary["downEscapeReclassified"] = (qlonglong)generator.downEscapeReclassified();
+        summary["upEscapeAfterSeam"]      = (qlonglong)generator.upEscapeAfterSeam();
+        summary["downEscapeAfterSeam"]    = (qlonglong)generator.downEscapeAfterSeam();
+        summary["degenerateDiscarded"]    = (qlonglong)generator.degenerateDiscarded();
         summary["gridSizeX"]   = data.GridSizeX;
         summary["gridSizeY"]   = data.GridSizeY;
         return summary;

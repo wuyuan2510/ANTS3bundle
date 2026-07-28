@@ -1,6 +1,11 @@
 // Full geometry validation of DavisLUT, run headless from this directory:
 //     ../../../bin/ants3 -j validate_geom.js
 //
+// Deprecated: repeated dispatcher simulations in one GUI JavaScript event loop can reuse a
+// later source configuration for several nominally different cases. Use validate_geom.py,
+// which runs one static configuration in a fresh lsim process per direction/angle.
+core.abort("validate_geom.js is deprecated because its dispatcher loop is state-racy; run python3 validate_geom.py");
+
 // The setup uses ideal, non-absorbing transport and two very close photon monitors so that
 // absolute R/T probabilities as well as conditional theta_out distributions can be compared
 // with the LUT. Both forward (LYSO->air) and reverse (air->LYSO) LUTs are exercised.

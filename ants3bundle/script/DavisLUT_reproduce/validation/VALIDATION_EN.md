@@ -6,7 +6,9 @@ This directory separates three questions that are easy to conflate:
    distributions stored in the LUT?
 2. Does the same rule remain correct when exercised through the complete
    **geometry -> photon tracer -> interface -> monitor** chain?
-3. Can the experimental setup, reflected/transmitted directions, and measured distributions be
+3. Is that complete transport chain covariant when the interface and monitors are rigidly
+   rotated away from the global axes?
+4. Can the experimental setup, reflected/transmitted directions, and measured distributions be
    inspected interactively in the ANTS3 GUI?
 
 These checks validate the software path that consumes a LUT. Independent validation of the LUT
@@ -67,7 +69,7 @@ Principal outputs:
 sampling problems, but it is not a rule-level validation. Its conditional interpolation oracle
 also includes the reflection probability of each neighboring incidence bin.
 
-## 2. Automated dual-monitor geometry validation: `validate_geom.js`
+## 2. Automated dual-monitor geometry validation: `validate_geom.py`
 
 The geometry is deliberately ideal and compact:
 
@@ -81,31 +83,95 @@ The geometry is deliberately ideal and compact:
   sides, which biased R/T in the older geometry validation.
 
 The forward and reverse LUTs are tested at the same eight angles used by the production-rule test.
-The experiment therefore measures both absolute R/T and the conditional theta distribution of
-each branch.
+The experiment measures absolute R/T, the conditional theta distribution, and the complete
+conditional `(theta,phi)` distribution of each branch.
 
 ```bash
-../../../bin/ants3 -j validate_geom.js
-python3 check_geometry.py
+python3 validate_geom.py
 python3 plot_geom.py
 ```
 
-`check_geometry.py` exits non-zero if the probability error, theta TVD, or uncollected fraction
-exceeds its corresponding limit. Numerical results are written to `data/geometry/`; plots are
-written as `validation_geom_probabilities.png` and `validation_geom_{fwd,rev}.png`.
+`validate_geom.py` deliberately starts a fresh `lsim` process for every direction/angle case.
+Repeated `lsim.simulate()` calls from one GUI JavaScript event loop can race with dispatcher state:
+a later source configuration may be used by several queued cases, producing identical results at
+nominally different angles. Static per-case configurations make the geometry regression
+deterministic and independently auditable.
+
+The runner exits non-zero if the probability error, theta TVD, joint theta-phi TVD, or uncollected
+fraction exceeds its corresponding Monte Carlo limit. Numerical results are written to
+`data/geometry/`; each worker config, log, and raw `PhotonMonitors.txt` is retained under
+`geom_out/batch/`. Plots are written as `validation_geom_probabilities.png` and
+`validation_geom_{fwd,rev}.png`.
+
+For a quicker diagnostic or alternate LUT pair:
+
+```bash
+python3 validate_geom.py --photons 100000 --angles 0 45 80
+python3 validate_geom.py --fwd /path/new_fwd.lut --rev /path/new_rev.lut
+```
+
+### 2.1 Rotated complete-geometry validation: `validate_rotated_geom.py`
+
+`validate_rule.js` already exercises a synthetic non-axis-aligned normal directly at rule level.
+`validate_rotated_geom.py` adds the missing end-to-end test: the LYSO body, interface, and both
+monitors are rigidly rotated in the real geometry navigator. The source position and global
+incident direction are rotated by the same matrix.
+
+The default test uses:
+
+- incidence angle `45 deg`;
+- ANTS3/TGeo Euler angles `(Phi,Theta,Psi) = (37,29,23) deg`;
+- global interface normal `(0.29176571,-0.38718618,0.87461971)`;
+- global incidence-plane tangent `ex=(0.52948291,0.82690026,0.18943021)`;
+- `300000` photons for each of baseline-forward, rotated-forward, baseline-reverse, and
+  rotated-reverse.
+
+For each direction, the baseline and rotated cases use the same random seed. The checker first
+compares the rotated R/T probabilities and conditional theta and joint theta-phi distributions
+with the LUT. It then compares the monitor-local distributions from the unrotated and rotated
+geometries directly. This second comparison is a strict covariance test: a rule that accidentally
+constructs its outgoing vector around global `z` or uses a global azimuth cannot pass it.
+
+```bash
+python3 validate_rotated_geom.py
+```
+
+The 300000-photon regression produced:
+
+| Direction/outcome | Measured / expected probability | Theta TVD / limit | Joint TVD / limit | Baseline-rotated joint TVD |
+|---|---:|---:|---:|---:|
+| fwd reflected | 0.754130 / 0.753450 | 0.00598 / 0.01553 | 0.02885 / 0.08259 | 0 |
+| fwd transmitted | 0.245870 / 0.246550 | 0.00654 / 0.02540 | 0.03259 / 0.09789 | 0 |
+| rev reflected | 0.080667 / 0.081109 | 0.01841 / 0.04894 | 0.09043 / 0.27295 | 0 |
+| rev transmitted | 0.919333 / 0.918891 | 0.00452 / 0.01210 | 0.01745 / 0.05003 | 0 |
+
+Both baseline and rotated runs had zero missing photons in both directions. With identical seeds,
+their conditional theta and complete theta-phi histograms were exactly identical bin by bin. This
+confirms that the basis built in `ALutInterfaceRule::calculate()`—the incident tangent `ex`,
+`ey=N x ex`, and the interface normal `N`—is converted to global photon directions correctly.
+
+Outputs:
+
+- `data/geometry/rotated_metrics.json`: rotation matrix, global basis vectors, probabilities,
+  TVDs, limits, conservation results, and overall pass/fail;
+- `figures/validation_rotated.png`: LUT, unrotated-baseline, and rotated theta overlays;
+- `geom_out/rotated/`: the four generated configurations, logs, and raw monitor files.
 
 ## 3. GUI geometry experiment: JSON configuration and TXT script
 
-The GUI workflow is split into two files with distinct responsibilities:
+The GUI workflow uses one loadable configuration and two alternative runners:
 
 | File | Where to load it | Responsibility |
 |---|---|---|
 | `validate_geom_gui.json` | Main window: **Configuration -> Load** | Materials, geometry, two monitors, both directional DavisLUT rules, ideal transport settings, and the default photon source |
 | `validate_geom_gui.txt` | **Scripting -> JavaScript -> Load script** | Select direction and angle, run the simulation, read monitors, calculate expected distributions, show the geometry, and draw comparisons |
+| `validate_rotated_geom_gui.txt` | **Scripting -> JavaScript -> Load script** | Rebuild the same experiment with editable Euler rotation, rotate the source consistently, and visualize/test local-to-global conversion |
 
-The `.txt` file still contains ANTS3 JavaScript. The extension is used because it is accepted by
-the GUI script picker. The JSON file is a complete, independently loadable configuration; the
-script no longer creates the geometry or injects interface rules at runtime.
+The `.txt` files contain ANTS3 JavaScript. The extension is used because it is accepted by the GUI
+script picker. The JSON file is a complete, independently loadable unrotated configuration.
+`validate_geom_gui.txt` uses that stored geometry directly; `validate_rotated_geom_gui.txt`
+deliberately rebuilds only the ideal geometry while retaining the JSON's materials, interface
+rules, and photon settings.
 
 ### 3.1 GUI procedure
 
@@ -131,7 +197,47 @@ that location. Before running, the script checks the configuration name, the req
 direction and angle values, photon count, LUT file, and monitor count, so a misloaded setup fails
 with an actionable message.
 
-### 3.2 Geometry stored in `validate_geom_gui.json`
+### 3.2 Rotated GUI procedure
+
+Load the same `validate_geom_gui.json`, but select `validate_rotated_geom_gui.txt` in the
+JavaScript window. Its editable controls are:
+
+```js
+var VALIDATION_DIR = "";
+var DIRECTION = "fwd";             // or "rev"
+var ANGLE = 45.0;
+var ROTATION = [37.0, 29.0, 23.0]; // [Phi, Theta, Psi] in degrees
+var PHOTONS = 300000;
+var SEED = 20260726;
+```
+
+On Run, the script:
+
+1. calculates the rotated global basis `EX`, `EY`, and `NORMAL` using the same Euler convention as
+   `AGeometryHub`/TGeo;
+2. rotates the LYSO body and upper monitor; the lower monitor is a LYSO child and inherits its
+   transform;
+3. places the interface at the global origin and rotates the source position and incident vector
+   so that the requested local incidence angle is unchanged;
+4. enlarges the AirBox to `40 x 40 x 40 mm`, keeping every tilted LYSO corner inside its mother;
+5. runs the real geometry/tracer/rule/monitor chain and compares R/T, theta, and joint theta-phi
+   distributions with the LUT;
+6. shows the rotated setup and guide rays in the Geometry viewer, overlays LUT and monitor theta
+   curves, and displays/saves the four joint distributions.
+
+The Geometry viewer uses red for the incident ray, blue for representative reflected output, and
+green for representative transmitted output. Output images are placed in
+`geom_gui_rotated_out/`; `metrics_<direction>_<angle>_rotated.json` records the global rotated
+basis, R/T probability tests, joint-TVD tests, missing photons, and overall pass/fail. For reverse
+propagation, monitor phi is mirrored into the LUT convention in the same way as the unrotated GUI
+runner.
+
+The script changes the in-memory geometry for the current GUI session. Reload
+`validate_geom_gui.json` to restore the original horizontal setup. This runner requires GUI mode;
+`ants3 -j validate_rotated_geom_gui.txt` intentionally aborts because the geometry and graph
+windows do not exist in headless mode.
+
+### 3.3 Geometry stored in `validate_geom_gui.json`
 
 The JSON retains only the two materials used by this experiment: `air` (material 0) and `LYSO`
 (material 1). The DOI configuration's historical `airbubble`, `epoxy`, and `grease` materials and
@@ -168,7 +274,7 @@ Consequently, after loading only the JSON, the GUI can already show the material
 source, and two rules. The TXT script reads the external LUT files only to construct an independent
 "stored LUT" plotting oracle. Photon tracking uses the DavisLUT data already embedded in the JSON.
 
-### 3.3 Script walkthrough
+### 3.4 Unrotated script walkthrough
 
 #### A. Controls and preflight checks
 
@@ -392,9 +498,15 @@ assumed to exist in the current upstream `dev` branch.
 
 - `validate_rule.js`, `check_runtime.py`, `plot_runtime_validation.py`: production runtime-rule
   validation;
-- `validate_geom.js`, `check_geometry.py`, `plot_geom.py`: automated complete-geometry validation;
+- `validate_geom.py`, `plot_geom.py`: isolated-process automated complete-geometry validation;
+- `validate_rotated_geom.py`: rigidly rotated baseline/covariance test of the complete geometry,
+  tracer, DavisLUT, and monitor chain;
+- `validate_geom.js`, `check_geometry.py`: legacy dispatcher-loop runner and checker, retained only
+  for diagnosing older result sets;
 - `validate_geom_gui.json`: complete ideal experiment configuration loadable by the GUI;
 - `validate_geom_gui.txt`: GUI JavaScript runner, readout, and visualization;
+- `validate_rotated_geom_gui.txt`: rotated GUI geometry builder, local-to-global test, readout,
+  and visualization;
 - `validate_lut.cpp`, `plot_validation.py`, `plot_lego.py`: supplementary low-level sampler tests;
 - `data/`: numerical results;
 - `figures/`: generated or reference figures.
